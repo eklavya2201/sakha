@@ -1,0 +1,19 @@
+{
+  "name": "krishna-sakha",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp voice-note companion for elders, in the voice of a Krishna-like sakha",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "ffmpeg-static": "^5.2.0"
+  }
+}
