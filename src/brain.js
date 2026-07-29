@@ -42,3 +42,34 @@ const SCHEMA = {
 const FALLBACK_REPLY =
   "मुझे माफ़ कीजिए, अभी मैं ठीक से सुन नहीं पाया। ज़रा फिर से बताइए, मैं यहीं हूँ।";
 
+export async function converse(userText, mem) {
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    output_config: {
+      effort: process.env.CLAUDE_EFFORT || "low",
+      format: { type: "json_schema", schema: SCHEMA },
+    },
+    system: [
+      { type: "text", text: PERSONA, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: `Known facts about this user:\n${mem.facts.length ? mem.facts.map((f) => `- ${f}`).join("\n") : "- (nothing yet — this may be a new friend)"}`,
+      },
+    ],
+    messages: [...mem.history, { role: "user", content: userText }],
+  });
+
+  if (response.stop_reason === "refusal") {
+    return { reply: FALLBACK_REPLY, risk: "none", new_facts: [] };
+  }
+  const text = response.content.find((b) => b.type === "text")?.text;
+  try {
+    const out = JSON.parse(text);
+    return { reply: out.reply, risk: out.risk, new_facts: out.new_facts || [] };
+  } catch {
+    return { reply: text || FALLBACK_REPLY, risk: "none", new_facts: [] };
+  }
+}
