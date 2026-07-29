@@ -60,3 +60,20 @@ async function handleMessage(message) {
     const wav = await synthesize(reply, languageCode);
     const mediaId = await uploadAudio(await wavToOggOpus(wav));
     await sendVoiceNote(from, mediaId);
+  } else {
+    await sendText(from, reply);
+  }
+
+  // Crisis: also leave the helplines on screen as text, so they persist.
+  if (risk === "crisis") {
+    await sendText(
+      from,
+      "आप अकेले नहीं हैं। Tele-MANAS हेल्पलाइन 14416 पर किसी भी समय मुफ़्त बात कर सकते हैं। बुज़ुर्गों के लिए Elder Line: 14567."
+    );
+  }
+
+  await saveExchange(from, mem, userText, reply, new_facts);
+}
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Krishna Sakha listening on http://localhost:${port}`));
