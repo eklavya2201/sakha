@@ -72,3 +72,19 @@ node scripts/test-sarvam.js   # writes sample-reply.wav — listen to Sakha's vo
 | 2026-07-26 | ngrok static domain wired + one-click `start-sakha.bat` | ✅ |
 | 2026-07-26 | API setup guide written for teammate (`docs/API-SETUP-GUIDE.md`) | ✅ |
 | — | Anthropic API key (~$5 credits) | ⏳ pending |
+| — | Meta app + WhatsApp token + Phone number ID (teammate; blocked once on "account too new") | ⏳ pending |
+| — | First end-to-end voice conversation on WhatsApp | ⏳ next |
+| — | Persona tuning with real elder testers (family pilot, 5–10 users) | ⏳ next |
+
+## 🗺️ Future plans
+
+**Phase 1 — working MVP (now)**
+- [ ] Keys in `.env`, webhook configured, first live voice note
+- [ ] `test-chat.js` CLI to tune persona quality without WhatsApp
+- [ ] Family pilot: 5–10 real elders; log what they actually talk about (expect: 80% loneliness/family, 15% health, 5% scripture)
+
+**Phase 2 — the retention engine**
+- [ ] **Proactive morning message** — shloka of the day + "Kaise ho aaj?" via approved WhatsApp template (paid, opens the 24h reply window)
+- [ ] Follow-ups on remembered things: "Kal Rahul ka phone aaya tha?" — proactive care is the emotional hole this product fills
+- [ ] Festival & Ekadashi awareness (panchang data as a tool — computed, never LLM-guessed)
+- [ ] Onboarding: language, tradition/sampradaya, family contact for crisis escalation (with elder's consent)
