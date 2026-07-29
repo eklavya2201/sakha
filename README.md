@@ -40,3 +40,35 @@ src/audio.js         ffmpeg ogg↔wav conversions (ffmpeg-static, no install)
 src/brain.js         Claude persona + memory + safety classification
 src/memory.js        per-user JSON store (facts + history)
 scripts/test-sarvam.js  TTS→ffmpeg→STT round-trip test (no WhatsApp needed)
+docs/API-SETUP-GUIDE.md teammate-ready guide to obtain all API keys
+start-sakha.bat      one-click: server + ngrok static tunnel
+```
+
+## Running it
+
+```sh
+npm install
+copy .env.example .env   # fill in keys — see docs/API-SETUP-GUIDE.md
+start-sakha.bat          # launches server (port 3000) + ngrok tunnel
+```
+
+Webhook URL (static, configure once in Meta app → WhatsApp → Configuration):
+`https://reid-mediatorial-noncreditably.ngrok-free.dev/webhook` — verify token `sakha-verify`, subscribe to the **messages** field.
+
+Test the audio pipeline alone (only needs the Sarvam key):
+
+```sh
+node scripts/test-sarvam.js   # writes sample-reply.wav — listen to Sakha's voice
+```
+
+## 📊 Progress
+
+| Date | Milestone | Status |
+|---|---|---|
+| 2026-07-26 | Idea: Krishna voice bot → pivoted to elder-companionship focus | ✅ |
+| 2026-07-26 | Full MVP pipeline scaffolded (webhook → STT → Claude → TTS → voice note) | ✅ |
+| 2026-07-26 | Server boot + webhook verification smoke-tested | ✅ |
+| 2026-07-26 | Sarvam key live — TTS/STT round-trip verified (near-perfect Hindi transcript) | ✅ |
+| 2026-07-26 | ngrok static domain wired + one-click `start-sakha.bat` | ✅ |
+| 2026-07-26 | API setup guide written for teammate (`docs/API-SETUP-GUIDE.md`) | ✅ |
+| — | Anthropic API key (~$5 credits) | ⏳ pending |
