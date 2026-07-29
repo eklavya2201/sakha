@@ -20,3 +20,14 @@ async function convert(inputBuf, inExt, outExt, args) {
     await unlink(inFile).catch(() => {});
     await unlink(outFile).catch(() => {});
   }
+}
+
+// WhatsApp voice notes arrive as ogg/opus; Sarvam STT wants 16kHz mono wav.
+export function oggToWav(buf) {
+  return convert(buf, "ogg", "wav", ["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"]);
+}
+
+// Sarvam TTS returns wav; WhatsApp renders ogg/opus as a voice note.
+export function wavToOggOpus(buf) {
+  return convert(buf, "wav", "ogg", ["-c:a", "libopus", "-b:a", "24k", "-ac", "1"]);
+}
