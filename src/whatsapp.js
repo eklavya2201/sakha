@@ -18,3 +18,29 @@ export async function downloadMedia(mediaId) {
   return Buffer.from(await file.arrayBuffer());
 }
 
+export async function uploadAudio(oggBuf) {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("file", new Blob([oggBuf], { type: "audio/ogg" }), "reply.ogg");
+  const res = await graphFetch(`${GRAPH}/${process.env.PHONE_NUMBER_ID}/media`, {
+    method: "POST",
+    body: form,
+  });
+  return (await res.json()).id;
+}
+
+async function sendMessage(payload) {
+  await graphFetch(`${GRAPH}/${process.env.PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...payload }),
+  });
+}
+
+export function sendVoiceNote(to, mediaId) {
+  return sendMessage({ to, type: "audio", audio: { id: mediaId } });
+}
+
+export function sendText(to, body) {
+  return sendMessage({ to, type: "text", text: { body } });
+}
