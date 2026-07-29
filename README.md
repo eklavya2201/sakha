@@ -114,3 +114,4 @@ node scripts/test-sarvam.js   # writes sample-reply.wav — listen to Sakha's vo
 1. **STT on elderly speech** is the make-or-break technical risk — validate with real elders early (slow, dialect-heavy, noisy phone audio).
 2. **Never let "Krishna" say something harmful.** One viral screenshot ends the product. Safety classification is in the main loop, not optional; boundaries are in the persona; crisis → human helplines.
 3. **Don't claim to be God** — Sakha is a companion *inspired by* Krishna's friendship. Regional/sampradaya differences (fasting rules, panchang) must be user-configurable, never assumed.
+4. **Temporary Meta token expires every 24h** during testing — refresh from the API Setup page; permanent token comes with business verification in Phase 3.
