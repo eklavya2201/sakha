@@ -60,3 +60,28 @@ Time needed: ~30–40 minutes. Cost: only Part B needs payment (~$5 / ₹450). P
 1. Go to **dashboard.sarvam.ai** → sign up with email/Google.
 2. New accounts get free credits automatically (enough for lots of testing).
 3. Find **API Keys** in the dashboard → create/copy the key. This is `SARVAM_API_KEY`.
+
+---
+
+## What to send back
+
+Send these 4 values over a private channel (NOT a public group — these are secrets):
+
+```
+WHATSAPP_TOKEN=EAA...
+PHONE_NUMBER_ID=123456789012345
+ANTHROPIC_API_KEY=sk-ant-...
+SARVAM_API_KEY=...
+```
+
+Plus: confirm which phone numbers you verified as test recipients in step A4, and that the step A10 "hello world" test message arrived.
+
+## Common problems
+
+| Problem | Fix |
+|---|---|
+| "Account too new to create a business" | Use an older Facebook account, or wait a day and retry |
+| Can't find Phone number ID | WhatsApp → API Setup page, small grey text under the From number dropdown |
+| Token stopped working next day | Normal — temporary token lasts 24h. Copy a fresh one from the same API Setup page |
+| No OTP received in step A4 | Make sure the number has WhatsApp active and includes country code +91 |
+| Anthropic card declined | Enable international/online transactions on the card, or try another card |
