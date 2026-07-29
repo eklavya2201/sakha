@@ -88,3 +88,29 @@ node scripts/test-sarvam.js   # writes sample-reply.wav — listen to Sakha's vo
 - [ ] Follow-ups on remembered things: "Kal Rahul ka phone aaya tha?" — proactive care is the emotional hole this product fills
 - [ ] Festival & Ekadashi awareness (panchang data as a tool — computed, never LLM-guessed)
 - [ ] Onboarding: language, tradition/sampradaya, family contact for crisis escalation (with elder's consent)
+
+**Phase 3 — product & scale**
+- [ ] Permanent Meta token + business verification + real WhatsApp number
+- [ ] Deploy to a server (AWS EC2, same pattern as Synqit) — no laptop/ngrok
+- [ ] Postgres/SQLite instead of JSON files; conversation analytics (PostHog)
+- [ ] Family dashboard: "Maa talked today, mood seemed okay" — strictly consent-first
+- [ ] Regional languages beyond Hindi (Sarvam supports 10+); female voice option (dadi may prefer a sakhi)
+
+**Phase 4 — monetization (validate first)**
+- [ ] Subscription ₹99–199/mo paid by children (free tier: limited daily conversation)
+- [ ] Festival premium packs (Navratri/Shravan guides), puja-booking referrals — the Astrotalk/Sri Mandir playbook
+
+## Costs (testing)
+
+| Service | Cost |
+|---|---|
+| WhatsApp Cloud API | Free (replies within 24h window are free; only phase-2 templates cost) |
+| Sarvam STT/TTS | Free signup credits |
+| ngrok | Free (static dev domain) |
+| Anthropic Claude | ~$5 minimum credits; ~₹1–2 per exchange on Opus 5 (persona cached). Use `CLAUDE_MODEL=claude-haiku-4-5` for cheap plumbing tests |
+
+## Key risks / design rules
+
+1. **STT on elderly speech** is the make-or-break technical risk — validate with real elders early (slow, dialect-heavy, noisy phone audio).
+2. **Never let "Krishna" say something harmful.** One viral screenshot ends the product. Safety classification is in the main loop, not optional; boundaries are in the persona; crisis → human helplines.
+3. **Don't claim to be God** — Sakha is a companion *inspired by* Krishna's friendship. Regional/sampradaya differences (fasting rules, panchang) must be user-configurable, never assumed.
