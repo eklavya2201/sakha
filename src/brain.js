@@ -31,3 +31,14 @@ MEMORY — new_facts:
 const SCHEMA = {
   type: "object",
   properties: {
+    reply: { type: "string", description: "The spoken reply, in the user's language" },
+    risk: { type: "string", enum: ["none", "distress", "crisis"] },
+    new_facts: { type: "array", items: { type: "string" } },
+  },
+  required: ["reply", "risk", "new_facts"],
+  additionalProperties: false,
+};
+
+const FALLBACK_REPLY =
+  "मुझे माफ़ कीजिए, अभी मैं ठीक से सुन नहीं पाया। ज़रा फिर से बताइए, मैं यहीं हूँ।";
+
