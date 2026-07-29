@@ -44,3 +44,19 @@ Time needed: ~30–40 minutes. Cost: only Part B needs payment (~$5 / ₹450). P
 10. Optional check: click the **Send message** test button on that page — you should receive a "hello world" template on WhatsApp. If you get it, Part A is done. ✅
 
 ---
+
+## Part B — Anthropic (Claude) API key — ~$5
+
+1. Go to **console.anthropic.com** → sign up (Google login works).
+2. Go to **Billing** (or it will prompt you) → add a card → buy the minimum **$5** credits.
+   (International transactions must be enabled on the card; most Indian credit cards + some debit cards work.)
+3. Go to **API Keys** → **Create Key** → name it `krishna-sakha` → copy the key (starts with `sk-ant-...`). This is `ANTHROPIC_API_KEY`.
+   ⚠️ The key is shown only ONCE — copy it immediately into a safe note.
+
+---
+
+## Part C — Sarvam AI key (speech-to-text + text-to-speech) — FREE
+
+1. Go to **dashboard.sarvam.ai** → sign up with email/Google.
+2. New accounts get free credits automatically (enough for lots of testing).
+3. Find **API Keys** in the dashboard → create/copy the key. This is `SARVAM_API_KEY`.
