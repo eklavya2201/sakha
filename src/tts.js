@@ -12,6 +12,10 @@ export async function synthesize(text, languageCode = "hi-IN") {
       speaker: process.env.SARVAM_TTS_SPEAKER || "karun",
       model: "bulbul:v2",
       pace: Number(process.env.SARVAM_TTS_PACE || 0.9),
+      // Same voice as the phone call, deliberately — someone who sends voice
+      // notes and then taps Call must hear the same friend, not a stranger with
+      // the same name. Keep this in step with src/voice/tts.js.
+      pitch: Number(process.env.SARVAM_TTS_PITCH || -0.2),
     }),
   });
   if (!res.ok) throw new Error(`Sarvam TTS ${res.status}: ${await res.text()}`);

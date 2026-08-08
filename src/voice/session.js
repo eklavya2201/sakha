@@ -10,7 +10,7 @@
 import { loadUser } from "../memory.js";
 import { buildCallPrompt, buildIntroduction } from "./prompt.js";
 import { mintRelayTicket, RELAY_PATH } from "./relay.js";
-import { SAMPLE_RATE } from "./format.js";
+import { IN_SAMPLE_RATE, OUT_SAMPLE_RATE } from "./format.js";
 import { sttConfigured } from "./stt.js";
 import { ttsConfigured, ttsStatusLine } from "./tts.js";
 import { brainConfigured, brainStatusLine } from "./brain.js";
@@ -79,7 +79,15 @@ export async function createCallSession({ phone = null, name = null, origin = ""
     mode: voiceMode(),
     signedUrl: `${wsOrigin}${RELAY_PATH}?token=${encodeURIComponent(token)}`,
     expiresInSeconds: 300,
-    config: { input_format: `pcm_${SAMPLE_RATE}`, sample_rate: SAMPLE_RATE },
+    // The two rates travel to the browser rather than being hardcoded there, so
+    // changing either is a one-line change on this side. The microphone runs at
+    // the rate the recogniser wants; Sakha's voice comes back at the rate the
+    // synthesiser actually produced.
+    config: {
+      input_format: `pcm_${IN_SAMPLE_RATE}`,
+      sample_rate: IN_SAMPLE_RATE,
+      output_sample_rate: OUT_SAMPLE_RATE,
+    },
     // "device" tells the page to speak Sakha's lines with the phone's own Hindi
     // voice, because with no Sarvam key the server cannot make audio at all.
     voice: ttsConfigured() ? "sarvam" : "device",

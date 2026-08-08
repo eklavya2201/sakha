@@ -17,7 +17,7 @@
 
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { SAMPLE_RATE, silence } from "./format.js";
+import { IN_SAMPLE_RATE, silence } from "./format.js";
 import { makeStt } from "./stt.js";
 import { makeTts, ttsConfigured, cacheablePhrases, prewarmPhrases } from "./tts.js";
 import { speakReply, speakDemoReply, brainConfigured, reviewCall, MAX_HISTORY } from "./brain.js";
@@ -33,8 +33,23 @@ export const RELAY_PATH = "/voice/stream";
 // deliberately left out.
 cacheablePhrases([buildIntroduction({}), ...allFixedPhrases()]);
 
-/** Buy the repeated lines at boot, so no caller waits for them. */
+/**
+ * Buy the repeated lines at boot, so no caller waits for them.
+ *
+ * OFF in development, on in production, because this is real money on every
+ * single boot: the greeting plus five acknowledgements, re-synthesised each time
+ * the process starts because the cache lives in memory. While building, the
+ * server restarts constantly and no caller is waiting, so that spend buys
+ * nothing at all. Deployed it is worth it — and on a free instance that sleeps
+ * after 15 minutes, "the first caller after a wake-up" is very often the only
+ * caller, usually the person being shown a demo.
+ *
+ * Force it either way with VOICE_PREWARM=true/false.
+ */
 export function warmVoiceCache() {
+  const setting = process.env.VOICE_PREWARM;
+  const wanted = setting === undefined ? process.env.NODE_ENV === "production" : setting === "true";
+  if (!wanted) return Promise.resolve({ warmed: 0, skipped: "prewarm off (set VOICE_PREWARM=true to force)" });
   return prewarmPhrases([buildIntroduction({}), ...allFixedPhrases()]);
 }
 
@@ -176,10 +191,10 @@ class RelayCall {
     this.streamId = msg.stream_id || randomUUID();
 
     const format = msg.config?.input_format;
-    if (format && format !== `pcm_${SAMPLE_RATE}`) {
+    if (format && format !== `pcm_${IN_SAMPLE_RATE}`) {
       // Not fatal, but mislabelled audio makes the caller sound slow and deep to
       // the recogniser, which is a miserable thing to debug from a live call.
-      this.log(`⚠️ client announced input_format=${format}, expected pcm_${SAMPLE_RATE}`);
+      this.log(`⚠️ client announced input_format=${format}, expected pcm_${IN_SAMPLE_RATE}`);
     }
 
     send(this.ws, { event: "ack", stream_id: this.streamId });

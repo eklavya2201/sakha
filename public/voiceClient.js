@@ -8,8 +8,14 @@
 // Plain script, no build step, matching the rest of the project.
 
 (function (global) {
-  // Must match SAMPLE_RATE in src/voice/format.js.
+  // Must match IN_SAMPLE_RATE in src/voice/format.js. The OUTPUT rate is not
+  // hardcoded — it arrives in the session config, because the two directions run
+  // at different rates: the mic at what the recogniser wants, Sakha's voice at
+  // the higher rate the synthesiser actually produced. Playing 22050 audio as if
+  // it were 16000 would make him sound slow and deep, which is a miserable thing
+  // to diagnose from a live call.
   var SAMPLE_RATE = 16000;
+  var DEFAULT_OUT_RATE = 22050;
   // Frames per chunk. 1024 ≈ 64ms at 16kHz — small enough that turn ends feel
   // prompt, large enough that we are not sending hundreds of tiny messages a
   // second over an elder's mobile data.
@@ -109,6 +115,7 @@
     this.scheduledSources = [];
     this.muted = false;
     this.startedAt = null;
+    this.outRate = (this.options.config && this.options.config.output_sample_rate) || DEFAULT_OUT_RATE;
     // Whether Sakha ever actually spoke. Distinguishes "they hung up" from "the
     // connection died before anything happened", which look identical otherwise.
     this.receivedAudio = false;
@@ -181,7 +188,7 @@
         self.mediaStream = stream;
         var Ctx = global.AudioContext || global.webkitAudioContext;
         self.captureContext = new Ctx({ sampleRate: SAMPLE_RATE });
-        self.playbackContext = new Ctx({ sampleRate: SAMPLE_RATE });
+        self.playbackContext = new Ctx({ sampleRate: self.outRate });
         var resumes = [];
         // iOS hands back suspended contexts even inside a gesture; without this
         // the caller hears nothing and there is no error to explain why.
@@ -342,7 +349,10 @@
     var ctx = this.playbackContext;
     if (!ctx) return;
 
-    var buffer = ctx.createBuffer(1, pcm.length, SAMPLE_RATE);
+    // Tagged with the rate it was SYNTHESISED at, not the capture rate. If the
+    // browser refused that rate for the context, Web Audio resamples on playback
+    // for free — what matters is that the buffer is labelled honestly.
+    var buffer = ctx.createBuffer(1, pcm.length, this.outRate);
     var channel = buffer.getChannelData(0);
     for (var i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
 

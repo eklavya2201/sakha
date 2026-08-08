@@ -1,21 +1,33 @@
-// One audio format for the entire call, in both directions.
+// The audio format of a call. Two rates, not one, and the split is deliberate.
 //
-// 16kHz mono pcm_s16le, chosen so there is not a single resample step between
-// the elder's microphone and their speaker:
-//   - Sarvam STT takes pcm_s16le and we ask it for 16000 (its own batch API
-//     wants 16k wav too, so this is its native rate).
-//   - Sarvam TTS is 22050 by default, but `speech_sample_rate: 16000` in the
-//     config genuinely changes the output — measured, see tts.js.
-//   - The browser resamples once from whatever rate its AudioContext gives it,
-//     which is the only conversion anywhere in the pipeline.
+// The first version ran everything at 16kHz so there would be no resampling
+// anywhere. That is right for the microphone and wrong for Sakha's voice: 16k
+// throws away everything above 8kHz, which is the part of speech that carries
+// clarity, and it made him sound muffled — the thing you notice immediately and
+// cannot name.
 //
-// 16k is also half the bytes of 22.05k over an elder's mobile data, and speech
-// loses nothing at this rate. If you change it, change it here only — every
-// other file reads it from this one.
-export const SAMPLE_RATE = 16000;
+// So each direction gets the rate that suits it:
+//
+//   IN  16000  what Sarvam's recogniser wants. Its batch API takes 16k wav and
+//              the streaming socket is told sample_rate=16000, so this is its
+//              native rate. Higher buys no accuracy and costs an elder's mobile
+//              data on every frame, all call long.
+//
+//   OUT 22050  bulbul's own native rate. Asking for 16k made Sarvam downsample
+//              its own output before sending it; asking for 22050 gets what the
+//              model actually produced. The browser resamples once on playback,
+//              which is free and inaudible — unlike the detail thrown away by
+//              synthesising at 16k, which cannot be recovered.
+//
+// ⚠️ On the TTS side `speech_sample_rate` is the ONLY parameter that changes the
+// rate. `output_audio_sample_rate` and `sample_rate` are accepted and silently
+// ignored — measured against the live account, don't re-litigate.
+export const IN_SAMPLE_RATE = 16000;
+export const OUT_SAMPLE_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 22050);
 
-/** Silent PCM. Used to pace speech, so the pause is scheduled by the playback
- *  queue exactly like audio rather than by a timer that races it. */
+/** Silent PCM at the OUTPUT rate — this only ever goes to the speaker. Used to
+ *  pace speech, so the pause is scheduled by the browser's playback queue
+ *  exactly like audio rather than by a timer that races it. */
 export function silence(ms) {
-  return Buffer.alloc(Math.round((SAMPLE_RATE * ms) / 1000) * 2);
+  return Buffer.alloc(Math.round((OUT_SAMPLE_RATE * ms) / 1000) * 2);
 }

@@ -25,7 +25,7 @@
 // nothing to speculate on: the first text we ever see is the whole turn.
 
 import WebSocket from "ws";
-import { SAMPLE_RATE } from "./format.js";
+import { IN_SAMPLE_RATE } from "./format.js";
 
 const SARVAM_HOST = "api.sarvam.ai";
 
@@ -65,7 +65,7 @@ class SarvamStt {
       "language-code": LANGUAGE, // hyphen, not underscore — the socket 400s on language_code
       model: MODEL,
       mode: "transcribe",
-      sample_rate: String(SAMPLE_RATE),
+      sample_rate: String(IN_SAMPLE_RATE),
       input_audio_codec: "pcm_s16le",
       vad_signals: "true", // without this there are no START/END_SPEECH events and no turns
       high_vad_sensitivity: String(HIGH_VAD),
@@ -117,14 +117,14 @@ class SarvamStt {
     }
   }
 
-  /** Feed raw pcm_s16le mono at SAMPLE_RATE. */
+  /** Feed raw pcm_s16le mono at IN_SAMPLE_RATE. */
   write(pcm) {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     try {
       ws.send(
         JSON.stringify({
-          audio: { data: pcm.toString("base64"), sample_rate: String(SAMPLE_RATE), encoding: "audio/wav" },
+          audio: { data: pcm.toString("base64"), sample_rate: String(IN_SAMPLE_RATE), encoding: "audio/wav" },
         })
       );
     } catch (e) {
@@ -193,7 +193,7 @@ class DemoStt {
       sum += v * v;
     }
     const rms = Math.sqrt(sum / Math.ceil(samples / 8));
-    const ms = (samples / SAMPLE_RATE) * 1000;
+    const ms = (samples / IN_SAMPLE_RATE) * 1000;
 
     if (rms > DEMO_RMS_FLOOR) {
       this.quietFor = 0;

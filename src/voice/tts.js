@@ -28,7 +28,7 @@
 // speech_sample_rate came back smaller, and by exactly the right ratio).
 
 import WebSocket from "ws";
-import { SAMPLE_RATE } from "./format.js";
+import { OUT_SAMPLE_RATE } from "./format.js";
 
 const SARVAM_HOST = "api.sarvam.ai";
 const MODEL = process.env.SARVAM_TTS_MODEL || "bulbul:v2";
@@ -43,6 +43,14 @@ const SPEAKER = process.env.SARVAM_TTS_SPEAKER || "karun";
 // universal past seventy, and slower speech is the single cheapest thing that
 // makes a voice easier to follow.
 const PACE = Number(process.env.SARVAM_TTS_PACE || 0.9);
+
+// Negative pitches karun down. Not vanity: a lower voice carries better through
+// age-related hearing loss, which takes the high frequencies first, and it reads
+// as steadier and less hurried — which is most of what this companion is for.
+// Range is roughly -0.75 to 0.75; past about -0.5 it stops sounding like a
+// person. Must match SARVAM_TTS_PITCH in src/tts.js or the WhatsApp Sakha and
+// the calling Sakha become two different men.
+const PITCH = Number(process.env.SARVAM_TTS_PITCH || -0.2);
 
 // Ceiling on one sentence, and a safety net rather than a latency control:
 // tripping it means something is already wrong. It has to exist because every
@@ -61,7 +69,7 @@ export function ttsConfigError() {
 }
 
 export function ttsStatusLine() {
-  return `Sarvam ${MODEL} (${SPEAKER}, pace ${PACE}, ${SAMPLE_RATE}Hz)`;
+  return `Sarvam ${MODEL} (${SPEAKER}, pace ${PACE}, pitch ${PITCH}, ${OUT_SAMPLE_RATE}Hz)`;
 }
 
 class SarvamTts {
@@ -96,8 +104,9 @@ class SarvamTts {
               speaker: SPEAKER,
               target_language_code: this.language,
               pace: PACE,
+              pitch: PITCH,
               output_audio_codec: "linear16", // raw pcm_s16le — no container to strip
-              speech_sample_rate: SAMPLE_RATE,
+              speech_sample_rate: OUT_SAMPLE_RATE,
             },
           })
         );
@@ -149,7 +158,7 @@ class SarvamTts {
   /**
    * Speak one sentence.
    * @param {string} text
-   * @param {(pcm: Buffer) => void} onAudio - raw pcm_s16le mono @ SAMPLE_RATE
+   * @param {(pcm: Buffer) => void} onAudio - raw pcm_s16le mono @ OUT_SAMPLE_RATE
    * @param {AbortSignal} [signal] - abort to drop it mid-way (barge-in)
    */
   async speak(text, onAudio, signal) {
@@ -190,6 +199,17 @@ class SarvamTts {
 
       try {
         this.ws.send(JSON.stringify({ type: "text", data: { text } }));
+        // ⚠️ NOT OPTIONAL. Sarvam buffers incoming text and only synthesises once
+        // it has enough, which is right for a token stream and wrong for us: we
+        // hand it one complete sentence at a time and there is no "more" coming.
+        //
+        // Without this, SHORT lines are never synthesised at all — measured:
+        // "जी।" returned nothing in 9s with no error, while a full sentence came
+        // back in 0.9s. That is precisely the acknowledgements in fillers.js, so
+        // the line whose whole job is to cover the 2.4s gap would instead go
+        // silent and hold the serial speech chain until the 12s timeout fired.
+        // A 2.4s pause became a 12s dead line, on most turns.
+        this.ws.send(JSON.stringify({ type: "flush" }));
       } catch (e) {
         this.pending = null;
         reject(e);

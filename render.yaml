@@ -79,3 +79,9 @@ services:
         sync: false
       - key: GRAPH_VERSION
         value: v23.0
+      # Worth the spend once deployed: the first caller after a wake-up is
+      # very often the only caller. Off locally, where the server restarts all day.
+      - key: VOICE_PREWARM
+        value: "true"
+      - key: SARVAM_TTS_PITCH
+        value: "-0.2"

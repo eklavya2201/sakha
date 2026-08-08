@@ -21,6 +21,13 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import ffmpegPath from "ffmpeg-static";
+import { allFixedPhrases } from "../src/voice/fillers.js";
+
+// The acknowledgement Sakha speaks while Claude is still writing is a real
+// agent line, so counting lines alone let this check pass on "हम्म…" without
+// Claude ever having answered — which is the single thing stage 5 exists to
+// prove. Exclude the fixed phrases and wait for something Claude actually wrote.
+const FILLERS = new Set(allFixedPhrases());
 
 const run = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,7 +35,8 @@ const PORT = Number(process.env.VOICE_CHECK_PORT || 3099);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SAMPLE = join(ROOT, "sample-reply.wav");
 
-const SAMPLE_RATE = 16000;
+const IN_RATE = 16000;   // what we feed the recogniser
+const OUT_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 22050); // what Sakha is synthesised at
 const FRAME_BYTES = 2048; // 1024 samples ≈ 64ms, same as the browser sends
 
 let failures = 0;
@@ -84,7 +92,7 @@ async function callerAudio() {
   // realistic level, which is what the recogniser and its VAD need — synthetic
   // tones prove nothing about either.
   const out = join(ROOT, ".voice-check.raw");
-  await run(ffmpegPath, ["-y", "-i", SAMPLE, "-ar", String(SAMPLE_RATE), "-ac", "1", "-f", "s16le", out]);
+  await run(ffmpegPath, ["-y", "-i", SAMPLE, "-ar", String(IN_RATE), "-ac", "1", "-f", "s16le", out]);
   const buf = await readFile(out);
   await unlink(out).catch(() => {});
   return buf;
@@ -153,7 +161,7 @@ async function main() {
     ok(`greeting: "${state.agentLines[0]}"`);
     if (session.voice === "sarvam") {
       await waitFor(() => state.audioBytes > 0, 20000, "greeting audio");
-      const seconds = state.audioBytes / (SAMPLE_RATE * 2);
+      const seconds = state.audioBytes / (OUT_RATE * 2);
       ok(`greeting audio: ${state.audioBytes} bytes ≈ ${seconds.toFixed(1)}s of speech`);
       if (seconds < 0.5) bad("that is too short to be a spoken sentence — check the TTS sample rate");
     } else {
@@ -162,7 +170,7 @@ async function main() {
 
     console.log("\n4. Hearing the caller");
     const pcm = await callerAudio();
-    info(`feeding ${(pcm.length / (SAMPLE_RATE * 2)).toFixed(1)}s of Hindi speech in real time…`);
+    info(`feeding ${(pcm.length / (IN_RATE * 2)).toFixed(1)}s of Hindi speech in real time…`);
     const spokeAt = Date.now();
     for (let i = 0; i < pcm.length; i += FRAME_BYTES) {
       if (ws.readyState !== WebSocket.OPEN) break;
@@ -202,9 +210,12 @@ async function main() {
     }
 
     console.log("\n5. Replying");
+    const realReply = () => state.agentLines.slice(1).filter((l) => !FILLERS.has(l));
     try {
-      await waitFor(() => state.agentLines.length > 1, 25000, "a reply");
-      ok(`replied: "${state.agentLines.slice(1).join(" ")}"`);
+      await waitFor(() => realReply().length > 0, 30000, "a reply Claude actually wrote");
+      ok(`replied: "${realReply().join(" ")}"`);
+      const acks = state.agentLines.slice(1).filter((l) => FILLERS.has(l));
+      if (acks.length) info(`(spoke "${acks[0]}" into the gap first, as intended)`);
       info(`states seen: ${state.states.join(" → ")}`);
     } catch (e) {
       bad(e.message);
