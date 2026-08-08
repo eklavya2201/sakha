@@ -210,55 +210,91 @@
       .callhead .who small { display: block; font-weight: 400; font-size: 14.5px; color: var(--ink-soft); }
       .timer { font-family: var(--serif); font-size: 25px; color: var(--orange-deep); font-variant-numeric: tabular-nums; }
 
-      /* The constellation: what we are talking about, as a sky.
-         Sakha's whole promise is being remembered, so the map on screen is the
-         shape of a life — home, health, grandchildren, old memories — and the
-         star nearest what they just said lights up and draws the sky toward it. */
-      .sky { position: relative; flex: 1; min-height: 0; margin: 4px -20px 0; overflow: hidden; }
-      .field { position: absolute; inset: 0; transition: transform 1100ms cubic-bezier(0.22, 0.75, 0.25, 1); will-change: transform; }
-      .links { position: absolute; inset: 0; width: 100%; height: 100%; }
-      .links line { stroke: rgba(234, 88, 12, 0.22); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 700ms ease; }
-      .links line.hot { stroke: rgba(234, 88, 12, 0.6); }
-      .star { position: absolute; transform: translate(-50%, -50%); text-align: center; transition: opacity 700ms ease; opacity: 0.55; }
-      .star i {
-        display: block; width: 10px; height: 10px; margin: 0 auto 7px; border-radius: 50%;
-        background: var(--amber); box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.16);
-        transition: transform 700ms cubic-bezier(0.2, 0.8, 0.3, 1), box-shadow 700ms ease, background 700ms ease;
-        animation: twinkle 4s ease-in-out infinite;
+      /* ── The breathing edge ───────────────────────────────────────────────
+         The call screen has almost nothing on it, so the ONE thing that says
+         "this is alive and it can hear you" is the glass itself. The whole
+         border blooms with the voice in the room — driven by the real
+         microphone level while the caller speaks, and by Sakha's own output
+         while he does.
+
+         It replaced a constellation of labelled topics. That was informative
+         and it was busy, and busy is wrong here: an elder on a call should be
+         looking at nothing, or at one word. */
+      .edge {
+        position: absolute; inset: 0; border-radius: inherit;
+        pointer-events: none; z-index: 3;
+        /* --glow is written from JS, 0..1, ~12 times a second. */
+        box-shadow:
+          inset 0 0 calc(22px + var(--glow, 0) * 60px) calc(1px + var(--glow, 0) * 9px)
+            rgba(249, 115, 22, calc(0.14 + var(--glow, 0) * 0.5)),
+          inset 0 0 calc(60px + var(--glow, 0) * 90px) calc(6px + var(--glow, 0) * 16px)
+            rgba(251, 191, 36, calc(0.06 + var(--glow, 0) * 0.28));
+        transition: box-shadow 90ms linear;
       }
-      /* Wraps rather than nowrap: "बच्चे और पोते-पोतियाँ" on a star near the
-         edge runs off the screen, and it gets wider again when it is the live
-         one and grows. */
-      .star span { display: block; max-width: 104px; font-size: 14px; line-height: 1.35; color: var(--ink-soft); transition: all 700ms ease; }
-      .star.core i { width: 14px; height: 14px; background: var(--orange-deep); }
-      .star.core span { color: var(--ink); font-weight: 600; }
-      .star.hot { opacity: 1; }
-      .star.hot i { transform: scale(1.7); background: var(--orange); box-shadow: 0 0 0 12px rgba(249, 115, 22, 0.16), 0 0 26px rgba(249, 115, 22, 0.55); }
-      .star.hot span { color: var(--ink); font-weight: 600; font-size: 15.5px; }
-      @keyframes twinkle { 0%,100% { opacity: 1; } 50% { opacity: 0.62; } }
-
-      .subject { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; padding: 0 20px; pointer-events: none; }
-      .subject b { display: block; font-family: var(--serif); font-size: 23px; font-weight: 600; }
-      .subject span { color: var(--ink-soft); font-size: 15.5px; }
-      .subject.swap b { animation: rise 600ms cubic-bezier(0.2,0.7,0.3,1) both; }
-
-      .staterow { display: flex; justify-content: center; padding-top: 8px; flex: none; }
-      .state {
-        display: inline-flex; align-items: center; gap: 9px;
-        background: rgba(255, 255, 255, 0.85); border: 1px solid var(--card-line);
-        border-radius: 999px; padding: 7px 15px; font-size: 16px; font-weight: 500;
+      /* Idle, it still breathes slowly — a phone that is perfectly still looks
+         like a phone that has hung up. */
+      .edge.idle { animation: idleBreath 4.5s ease-in-out infinite; }
+      @keyframes idleBreath { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+      /* Sakha's own voice leans gold rather than orange, so which of the two of
+         you is talking is readable without a single word on screen. */
+      .edge.agent {
+        box-shadow:
+          inset 0 0 calc(22px + var(--glow, 0) * 60px) calc(1px + var(--glow, 0) * 9px)
+            rgba(245, 158, 11, calc(0.16 + var(--glow, 0) * 0.5)),
+          inset 0 0 calc(60px + var(--glow, 0) * 90px) calc(6px + var(--glow, 0) * 16px)
+            rgba(253, 224, 71, calc(0.07 + var(--glow, 0) * 0.3));
       }
-      .state .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); animation: breathe 1.5s ease-in-out infinite; }
-      @keyframes breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } }
 
-      .controls { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 12px; flex: none; }
+      /* ── The middle: one word ── */
+      .stage { flex: 1; min-height: 0; display: grid; place-items: center; text-align: center; position: relative; }
+      .mark-big {
+        font-family: var(--serif);
+        font-size: clamp(46px, 15vw, 66px);
+        font-weight: 600; letter-spacing: 0.02em; line-height: 1.1;
+        margin: 0;
+      }
+      .state-word {
+        margin: 10px 0 0; font-size: 17px; color: var(--ink-soft);
+        min-height: 26px; transition: opacity 400ms ease;
+      }
+      .timer-big {
+        font-family: var(--serif); font-size: 19px; color: var(--orange-deep);
+        font-variant-numeric: tabular-nums; margin: 14px 0 0;
+      }
+
+      /* Captions, off by default. Worth having for an elder who hears badly —
+         but a wall of text on a call screen is the thing we just removed, so it
+         is behind a button and shows only the last couple of lines. */
+      .cc {
+        position: absolute; left: 0; right: 0; bottom: 0;
+        padding: 0 6px; display: none;
+      }
+      .cc.on { display: block; animation: rise 400ms ease both; }
+      .cc p {
+        margin: 6px 0 0; font-size: 16.5px; line-height: 1.5;
+        background: rgba(255, 255, 255, 0.82); border: 1px solid var(--card-line);
+        border-radius: 14px; padding: 9px 13px;
+      }
+      .cc p.caller { background: rgba(249, 115, 22, 0.12); }
+
+      .controls { display: flex; align-items: center; justify-content: center; gap: 16px; padding-top: 12px; flex: none; }
       button.round {
-        width: 54px; height: 54px; flex: none; border-radius: 50%;
+        width: 58px; height: 58px; flex: none; border-radius: 50%;
         border: 1px solid var(--card-line); background: rgba(255, 255, 255, 0.92);
-        font-size: 21px; cursor: pointer; display: grid; place-items: center; transition: transform 120ms ease;
+        font-size: 22px; cursor: pointer; display: grid; place-items: center; transition: transform 120ms ease;
       }
       button.round:active { transform: scale(0.94); }
       button.round.off { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+      button.round.on { background: var(--orange); border-color: var(--orange); }
+      /* Red, round, and rotated — the one control that must be unmistakable at
+         arm's length without reading a word of it. */
+      button.round.hangup {
+        background: linear-gradient(150deg, #f08a7e, var(--coral));
+        border-color: transparent; color: #fff;
+        box-shadow: 0 10px 26px rgba(227, 93, 79, 0.34);
+        transform: rotate(133deg);
+      }
+      button.round.hangup:active { transform: rotate(133deg) scale(0.94); }
       button.end {
         background: linear-gradient(150deg, #f08a7e, var(--coral));
         color: #fff; padding: 15px 40px; box-shadow: 0 10px 26px rgba(227, 93, 79, 0.34);
@@ -293,6 +329,8 @@
   <body>
     <div class="phone">
       <div class="sky-bg" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
+      <!-- Sits above everything and takes no clicks. Only lit during a call. -->
+      <div class="edge" id="edge" aria-hidden="true" style="display: none"></div>
 
       <div class="wrap">
         <!-- 1 ── Before the call ───────────────────────────────────────── -->
@@ -343,23 +381,19 @@
 
         <!-- 3 ── On the call ───────────────────────────────────────────── -->
         <section class="screen" id="screen-call">
-          <div class="callhead">
-            <div class="who">सखा<small>आपका साथी</small></div>
-            <div class="timer" id="timer">००:००</div>
-          </div>
-
-          <div class="sky" id="sky">
-            <div class="field" id="field">
-              <svg class="links" id="links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="stage">
+            <div>
+              <p class="mark-big">सखा</p>
+              <p class="state-word" id="state-text">जोड़ रहे हैं</p>
+              <p class="timer-big" id="timer">००:००</p>
             </div>
-            <div class="subject" id="subject"><b id="subject-title">आप</b><span id="subject-note">जो मन में है, वही</span></div>
+            <div class="cc" id="cc"></div>
           </div>
-
-          <div class="staterow"><span class="state"><span class="dot"></span><span id="state-text">जोड़ रहे हैं</span></span></div>
 
           <div class="controls">
+            <button class="round" id="btn-cc" title="बातचीत दिखाइए" aria-label="बातचीत दिखाइए">💬</button>
             <button class="round" id="btn-mute" title="माइक बंद कीजिए" aria-label="माइक बंद कीजिए">🎙️</button>
-            <button class="end" id="btn-end">बात ख़त्म</button>
+            <button class="round hangup" id="btn-end" title="बात ख़त्म कीजिए" aria-label="बात ख़त्म कीजिए">📞</button>
           </div>
           <p class="private">यह बातचीत निजी है। किसी और को नहीं दी जाती।</p>
           <div class="error" id="call-error"></div>

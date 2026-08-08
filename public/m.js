@@ -12,11 +12,11 @@
   };
   var els = {
     name: $("name"), phone: $("phone"),
-    start: $("btn-start"), again: $("btn-again"), end: $("btn-end"), mute: $("btn-mute"), mic: $("btn-mic"),
+    start: $("btn-start"), again: $("btn-again"), end: $("btn-end"),
+    mute: $("btn-mute"), mic: $("btn-mic"), cc: $("btn-cc"),
     introError: $("intro-error"), callError: $("call-error"),
     timer: $("timer"), stateText: $("state-text"), connectText: $("connect-text"),
-    sky: $("sky"), field: $("field"), links: $("links"),
-    subject: $("subject"), subjectTitle: $("subject-title"), subjectNote: $("subject-note"),
+    edge: $("edge"), ccBox: $("cc"),
     said: $("said"), doneTitle: $("done-title"), doneNote: $("done-note"), mode: $("mode"),
   };
 
@@ -24,105 +24,16 @@
   var session = null;  // what /api/voice/session returned
   var timers = { tick: null, level: null };
   var transcript = [];
-  var lastAgentBody = null;
-
-  // ── The constellation ─────────────────────────────────────────────────────
-  // The shape of a life, not a menu. Each star is something an elder might be
-  // carrying; the one nearest what they just said lights up and the sky drifts
-  // toward it, so the screen is always quietly showing "I am following you".
-  //
-  // Matched on the CALLER's words, never Sakha's — the subject of a conversation
-  // is set by the person whose conversation it is.
-  var TOPICS = [
-    { id: "self",   label: "आप",                   note: "जो मन में है, वही",        x: 50, y: 50, core: true },
-    { id: "ghar",   label: "घर और परिवार",          note: "जो साथ हैं, जो दूर हैं",   x: 22, y: 27,
-      words: /(घर|परिवार|बहू|दामाद|बेटा|बेटी|पति|पत्नी|भाई|बहन|अकेले रह)/ },
-    { id: "bacche", label: "बच्चे और पोते-पोतियाँ", note: "जिनकी याद सबसे ज़्यादा आती है", x: 78, y: 30,
-      words: /(पोता|पोती|पोत|नाती|बच्च|स्कूल|फ़ोन आया|फोन आया|विदेश|बाहर रह)/ },
-    { id: "tabiyat",label: "तबीयत",                note: "शरीर कैसा चल रहा है",       x: 84, y: 62,
-      words: /(तबीयत|तबियत|दर्द|दवा|दवाई|डॉक्टर|डाक्टर|घुटन|कमर|नींद|बीमार|शुगर|बीपी|चक्कर)/ },
-    { id: "yaad",   label: "पुरानी यादें",          note: "जो बीत गया, पर रह गया",     x: 62, y: 82,
-      words: /(याद|पहले|बचपन|गाँव|गांव|शादी|पुराने दिन|वो ज़माना|जवानी)/ },
-    { id: "man",    label: "मन की बात",            note: "जो कहना मुश्किल है",        x: 26, y: 76,
-      words: /(मन|अकेल|उदास|दुख|रोन|खुश|डर|चिंता|घबरा|भारी|बोझ|तनहा)/ },
-    { id: "din",    label: "रोज़ का दिन",           note: "सुबह से शाम तक",            x: 12, y: 54,
-      words: /(सुबह|शाम|खाना|चाय|मंदिर|पूजा|टहल|सैर|टीवी|अख़बार|अखबार|बाज़ार)/ },
-  ];
-
-  var stars = {};
-  // null, not "self" — highlight() returns early when nothing changed, so
-  // seeding this with a real topic would leave the centre star unlit until the
-  // caller happened to change the subject.
-  var currentTopic = null;
-
-  function buildSky() {
-    var svgNS = "http://www.w3.org/2000/svg";
-    var core = TOPICS[0];
-    TOPICS.forEach(function (t) {
-      if (!t.core) {
-        // Every star hangs off the centre: whatever they talk about, it is
-        // still about them.
-        var line = document.createElementNS(svgNS, "line");
-        line.setAttribute("x1", core.x); line.setAttribute("y1", core.y);
-        line.setAttribute("x2", t.x); line.setAttribute("y2", t.y);
-        line.dataset.topic = t.id;
-        els.links.appendChild(line);
-      }
-      var star = document.createElement("div");
-      star.className = "star" + (t.core ? " core" : "");
-      star.style.left = t.x + "%";
-      star.style.top = t.y + "%";
-      // Stagger the twinkle so the sky never pulses in unison.
-      var dot = document.createElement("i");
-      dot.style.animationDelay = (Math.random() * 4).toFixed(2) + "s";
-      var label = document.createElement("span");
-      label.textContent = t.label;
-      star.appendChild(dot);
-      star.appendChild(label);
-      els.field.appendChild(star);
-      stars[t.id] = star;
-    });
-    highlight("self");
-  }
-
-  function highlight(id) {
-    if (id === currentTopic) return;
-    currentTopic = id;
-    var topic = TOPICS.filter(function (t) { return t.id === id; })[0] || TOPICS[0];
-
-    Object.keys(stars).forEach(function (k) { stars[k].classList.toggle("hot", k === id); });
-    var lines = els.links.querySelectorAll("line");
-    for (var i = 0; i < lines.length; i++) lines[i].classList.toggle("hot", lines[i].dataset.topic === id);
-
-    // Draw the sky toward the live star, the way Profound's constellation
-    // leans into whatever is being discussed. Modest scale — an elder should
-    // never feel the screen lurch.
-    var scale = topic.core ? 1 : 1.28;
-    var dx = (50 - topic.x) * (scale / 100) * 100;
-    var dy = (50 - topic.y) * (scale / 100) * 100;
-    els.field.style.transform = "translate(" + dx.toFixed(2) + "%," + dy.toFixed(2) + "%) scale(" + scale + ")";
-
-    els.subjectTitle.textContent = topic.label;
-    els.subjectNote.textContent = topic.note;
-    els.subject.classList.remove("swap");
-    void els.subject.offsetWidth; // restart the entrance animation
-    els.subject.classList.add("swap");
-  }
-
-  function matchTopic(text) {
-    for (var i = 1; i < TOPICS.length; i++) {
-      if (TOPICS[i].words && TOPICS[i].words.test(text)) return TOPICS[i].id;
-    }
-    return null;
-  }
+  var muted = false;
+  var showCaptions = false;
 
   // ── Screens ───────────────────────────────────────────────────────────────
 
   function show(which) {
     Object.keys(screens).forEach(function (k) { screens[k].classList.toggle("on", k === which); });
-    // The frame itself never scrolls — only the middle of a screen does — so a
-    // screen has to be handed over already at the top rather than wherever the
-    // last one was left.
+    // The glass only breathes during a call. On the other screens it would just
+    // be an orange vignette with nothing behind it.
+    els.edge.style.display = which === "call" ? "block" : "none";
     var scroller = screens[which].querySelector(".scroll");
     if (scroller) scroller.scrollTop = 0;
   }
@@ -140,12 +51,10 @@
   // Devanagari numerals on the clock, because everything else on this page is
   // in Hindi and a Latin "07:12" is the one thing that would look borrowed.
   var DIGITS = ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"];
-  function hindiNumber(n) {
-    return String(n).replace(/\d/g, function (d) { return DIGITS[+d]; });
-  }
   function clock(seconds) {
     var m = Math.floor(seconds / 60), s = seconds % 60;
-    return hindiNumber((m < 10 ? "0" : "") + m) + ":" + hindiNumber((s < 10 ? "0" : "") + s);
+    var pad = function (n) { return String(n).length < 2 ? "0" + n : String(n); };
+    return (pad(m) + ":" + pad(s)).replace(/\d/g, function (d) { return DIGITS[+d]; });
   }
 
   // ── Remembering who they are ──────────────────────────────────────────────
@@ -195,7 +104,7 @@
     var u = new SpeechSynthesisUtterance(text);
     if (deviceVoice) u.voice = deviceVoice;
     u.lang = "hi-IN";
-    u.rate = 0.92; // slowed, for the same reason Sarvam's pace is 0.9
+    u.rate = 0.95;
     // Mute the microphone while the phone talks. Without this the demo VAD
     // hears the phone's own voice and answers it, and the call talks to itself.
     if (active) active.setMuted(true);
@@ -204,12 +113,15 @@
   }
 
   // ── What Sakha is doing ───────────────────────────────────────────────────
+  // One word, under his name. Everything else that used to be on this screen —
+  // the constellation, the topic labels, the running transcript — is gone: an
+  // elder on a call should be looking at nothing, or at one word.
 
   var STATES = {
-    connecting: "जोड़ रहे हैं",
+    connecting: "जोड़ रहे हैं…",
     speaking: "सखा बोल रहे हैं",
-    thinking: "सखा सोच रहे हैं",
-    listening: "अब आप बोलिए",
+    thinking: "सोच रहे हैं…",
+    listening: "सुन रहे हैं",
   };
 
   function setState(state) {
@@ -218,10 +130,19 @@
 
   function record(role, text) {
     transcript.push({ role: role, text: text });
-    if (role === "caller") {
-      var topic = matchTopic(text);
-      if (topic) highlight(topic);
-    }
+    if (showCaptions) renderCaptions();
+  }
+
+  // Only the last couple of lines. A wall of text on a call screen is exactly
+  // what this redesign removed.
+  function renderCaptions() {
+    els.ccBox.innerHTML = "";
+    transcript.slice(-2).forEach(function (t) {
+      var p = document.createElement("p");
+      p.className = t.role;
+      p.textContent = t.text;
+      els.ccBox.appendChild(p);
+    });
   }
 
   function renderTranscript() {
@@ -239,18 +160,28 @@
     });
   }
 
-  // The stars breathe with whoever is talking — the one thing on the call
-  // screen that says "this is live" without using a word.
+  // ── The breathing edge ────────────────────────────────────────────────────
+  // The only thing on the call screen that moves, and the only thing that says
+  // "it can hear you" without a word. Orange while the caller speaks, gold
+  // while Sakha does, and a slow idle pulse in between so the phone never looks
+  // like it has hung up.
+
   function startAnimations(call) {
     stopAnimations();
     timers.tick = setInterval(function () {
       els.timer.textContent = clock(call.elapsedSeconds());
     }, 500);
+
     timers.level = setInterval(function () {
-      var level = Math.min(1, Math.max(call.inputLevel, call.readOutputLevel()));
-      var hot = stars[currentTopic];
-      if (hot) hot.style.setProperty("--pulse", level.toFixed(2));
-      els.sky.style.filter = "saturate(" + (1 + level * 0.5).toFixed(2) + ")";
+      var input = call.inputLevel || 0;
+      var output = call.readOutputLevel() || 0;
+      var agentTalking = output > 0.02 && output >= input;
+      // Scaled up: conversational speech peaks well below 1.0, and an edge that
+      // only blooms when someone shouts is an edge that never blooms.
+      var level = Math.min(1, Math.max(input, output) * 1.8);
+      els.edge.classList.toggle("agent", agentTalking);
+      els.edge.classList.toggle("idle", level < 0.05);
+      els.edge.style.setProperty("--glow", level.toFixed(3));
     }, 80);
   }
 
@@ -258,23 +189,24 @@
     if (timers.tick) clearInterval(timers.tick);
     if (timers.level) clearInterval(timers.level);
     timers.tick = timers.level = null;
-    els.sky.style.filter = "";
+    els.edge.classList.remove("agent");
+    els.edge.classList.add("idle");
+    els.edge.style.setProperty("--glow", "0");
   }
 
   // ── The call ──────────────────────────────────────────────────────────────
-
-  var muted = false;
 
   function startCall() {
     clearError(els.introError);
     clearError(els.callError);
     transcript = [];
-    lastAgentBody = null;
     muted = false;
+    showCaptions = false;
+    els.ccBox.classList.remove("on");
+    els.cc.classList.remove("on");
     els.mute.classList.remove("off");
     els.mute.textContent = "🎙️";
     els.timer.textContent = clock(0);
-    highlight("self");
     els.start.disabled = true;
     els.again.disabled = true;
     remember();
@@ -393,9 +325,16 @@
     els.mute.setAttribute("aria-label", muted ? "माइक चालू कीजिए" : "माइक बंद कीजिए");
   });
 
+  // Captions off by default. On, for someone who hears badly and would rather
+  // read the last thing Sakha said than ask him to repeat it.
+  els.cc.addEventListener("click", function () {
+    showCaptions = !showCaptions;
+    els.ccBox.classList.toggle("on", showCaptions);
+    els.cc.classList.toggle("on", showCaptions);
+    if (showCaptions) renderCaptions();
+  });
+
   // Hanging up by closing the tab must still release the microphone and let the
   // server file the call, rather than waiting for the socket to time out.
   window.addEventListener("pagehide", function () { if (active) active.stop(); });
-
-  buildSky();
 })();
