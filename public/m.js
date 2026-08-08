@@ -284,6 +284,9 @@
   function micGranted() {
     els.mic.textContent = "माइक चालू है ✓";
     els.mic.disabled = true;
+    // Finished business. It stops looking like a second button competing with
+    // the one they actually have to press, and becomes a line of reassurance.
+    els.mic.classList.add("done");
   }
 
   // If they already allowed it on a previous visit, the button is just clutter.
