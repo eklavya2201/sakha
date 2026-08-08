@@ -17,12 +17,53 @@ export async function loadUser(waId) {
   }
 }
 
-export async function saveExchange(waId, mem, userText, replyText, newFacts) {
-  mem.history.push({ role: "user", content: userText }, { role: "assistant", content: replyText });
-  mem.history = mem.history.slice(-HISTORY_LIMIT);
-  for (const fact of newFacts) {
+// Claude requires messages to alternate and to start with the user. WhatsApp
+// always appends a user/assistant pair so it stays aligned on its own, but a
+// phone call does not: Sakha speaks first, an elder can say two things before
+// Sakha answers, and trimming to the last 24 can cut mid-pair. Left alone, one
+// call would make every later WhatsApp message 400.
+function normalizeHistory(history) {
+  const merged = [];
+  for (const turn of history) {
+    if (!turn?.content) continue;
+    const last = merged[merged.length - 1];
+    // Two turns in the same voice are one turn as far as the model is concerned.
+    if (last && last.role === turn.role) last.content += " " + turn.content;
+    else merged.push({ ...turn });
+  }
+  const trimmed = merged.slice(-HISTORY_LIMIT);
+  // A window that opens on Sakha talking has no question in front of it.
+  while (trimmed.length && trimmed[0].role !== "user") trimmed.shift();
+  return trimmed;
+}
+
+async function persist(waId, mem, newFacts) {
+  mem.history = normalizeHistory(mem.history);
+  for (const fact of newFacts || []) {
     if (!mem.facts.includes(fact)) mem.facts.push(fact);
   }
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(userFile(waId), JSON.stringify(mem, null, 2));
+}
+
+export async function saveExchange(waId, mem, userText, replyText, newFacts) {
+  mem.history.push({ role: "user", content: userText }, { role: "assistant", content: replyText });
+  await persist(waId, mem, newFacts);
+}
+
+/**
+ * File a finished phone call against the same memory the WhatsApp bot uses.
+ *
+ * The same file on purpose: someone who sends voice notes on Monday and taps
+ * Call on Thursday must be met by a friend who remembers Monday. Two stores
+ * would make Sakha two people who happen to share a voice.
+ *
+ * @param {Array<{role: "caller"|"agent", text: string}>} turns - in spoken order
+ */
+export async function saveCall(waId, mem, turns, newFacts) {
+  for (const turn of turns) {
+    if (!turn?.text) continue;
+    mem.history.push({ role: turn.role === "caller" ? "user" : "assistant", content: turn.text });
+  }
+  await persist(waId, mem, newFacts);
 }

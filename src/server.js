@@ -1,14 +1,22 @@
 import "dotenv/config";
 import express from "express";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { downloadMedia, uploadAudio, sendVoiceNote, sendText } from "./whatsapp.js";
 import { oggToWav, wavToOggOpus } from "./audio.js";
 import { transcribe } from "./stt.js";
 import { synthesize } from "./tts.js";
 import { converse } from "./brain.js";
 import { loadUser, saveExchange } from "./memory.js";
+import { attachVoiceRelay, warmVoiceCache } from "./voice/relay.js";
+import { createCallSession, voiceStatusLine, voiceMode } from "./voice/session.js";
 
 const app = express();
 app.use(express.json());
+
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
+app.use(express.static(PUBLIC_DIR));
 
 const seen = new Set(); // WhatsApp retries webhooks; dedupe by message id
 
@@ -75,5 +83,71 @@ async function handleMessage(message) {
   await saveExchange(from, mem, userText, reply, new_facts);
 }
 
+// ── Phone calls from the browser ────────────────────────────────────────────
+// The other way in: the elder (or, far more often, their son or daughter) opens
+// a link on a phone and taps one big button. No app, no WhatsApp, no number to
+// save — which matters because the people who most need this are the least
+// likely to install anything.
+
+// Five calls per ten minutes per device. Someone starting over after a dropped
+// connection stays well inside this; a script does not.
+const started = new Map();
+function rateLimited(ip) {
+  const now = Date.now();
+  const hits = (started.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  hits.push(now);
+  started.set(ip, hits);
+  if (started.size > 500) for (const [k, v] of started) if (!v.some((t) => now - t < 10 * 60 * 1000)) started.delete(k);
+  return hits.length > 5;
+}
+
+app.post("/api/voice/session", async (req, res) => {
+  const ip = req.ip || req.socket?.remoteAddress || "unknown";
+  if (rateLimited(ip)) {
+    return res.status(429).json({ error: "थोड़ी देर रुककर फिर कोशिश कीजिए।" });
+  }
+  try {
+    // Behind ngrok the real protocol is in x-forwarded-proto, not req.protocol —
+    // get this wrong and the page tries ws:// from an https:// origin, which the
+    // browser blocks as mixed content with a message that names nothing.
+    const proto = req.get("x-forwarded-proto") || req.protocol || "http";
+    const session = await createCallSession({
+      phone: req.body?.phone || null,
+      name: req.body?.name || null,
+      origin: `${proto}://${req.get("host")}`,
+    });
+    console.log(
+      `[sakha:call] session (${session.caller.known ? `known, ${session.caller.remembers} facts` : "new"}) mode=${session.mode}`
+    );
+    res.json(session);
+  } catch (e) {
+    console.error("[sakha:call] session failed:", e.message);
+    res.status(502).json({ error: "अभी बात शुरू नहीं हो पा रही। थोड़ी देर में फिर कोशिश कीजिए।" });
+  }
+});
+
+// The phone page. Its own file rather than a route of anything else — it is a
+// different surface with a different design (large type, one button, Hindi).
+app.get("/m", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "m.html")));
+
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Krishna Sakha listening on http://localhost:${port}`));
+
+// An explicit http.Server rather than app.listen(), because the relay is a
+// WebSocket endpoint on this same origin and needs the `upgrade` event.
+const server = http.createServer(app);
+attachVoiceRelay(server);
+
+server.listen(port, () => {
+  console.log(`Krishna Sakha listening on http://localhost:${port}`);
+  console.log(`Phone page: http://localhost:${port}/m`);
+  console.log(voiceStatusLine());
+  if (voiceMode() === "demo") {
+    console.log("  ↳ demo mode: no keys needed. Turns are detected from real speech, the words are scripted.");
+  }
+  // Buy the greeting and the acknowledgements once, now, rather than making the
+  // first caller wait for each. Not awaited: a provider having a slow minute
+  // must not hold up the server accepting requests.
+  warmVoiceCache()
+    .then((r) => r.warmed && console.log(`Voice: pre-synthesised ${r.warmed} repeated line(s).`))
+    .catch((e) => console.warn(`⚠️  Could not pre-warm the voice cache: ${e.message}`));
+});
