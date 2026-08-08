@@ -341,11 +341,21 @@
       .line.caller { background: rgba(249, 115, 22, 0.12); margin-left: 20px; }
       .line em { display: block; font-style: normal; font-size: 13px; color: var(--ink-soft); }
 
-      /* Always in front of them, never one tap away. If a call goes somewhere
-         dark, these numbers must already be on the glass — an elder cannot write
-         down a number that was only ever spoken. */
-      footer { flex: none; text-align: center; color: var(--ink-soft); font-size: 14.5px; padding-top: 10px; line-height: 1.5; }
-      footer a { color: var(--orange-deep); font-weight: 600; text-decoration: none; font-size: 16px; }
+      /* The helplines. Nothing external requires these — it is a judgement, and
+         this is the reasoning, because someone will want to delete them.
+
+         An elder cannot write down a number that was only ever spoken aloud, so
+         if a call goes somewhere dark the number has to already be on the glass.
+         It costs one line before the call and one after it.
+
+         But NOT during the call. That screen was deliberately stripped to a
+         single word, and a helpline notice under it both adds clutter and
+         changes what the screen is saying to someone who is simply chatting.
+         Sakha speaks the number himself when it is actually warranted — see
+         CRISIS in src/voice/prompt.js — which is the moment it matters. */
+      footer { flex: none; text-align: center; color: var(--ink-soft); font-size: 14px; padding-top: 10px; line-height: 1.5; }
+      footer a { color: var(--orange-deep); font-weight: 600; text-decoration: none; font-size: 15.5px; }
+      .wrap.in-call footer { display: none; }
       .mode { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
 
       @media (prefers-reduced-motion: reduce) {
@@ -383,14 +393,20 @@
             </div>
           </div>
 
+          <!-- ONE button, which changes what it is.
+               First tap asks for the microphone; then the same button becomes
+               "बात शुरू कीजिए". Two buttons side by side made an elder choose
+               between them, and the choice was meaningless — you always need
+               both, in that order. One button asks one thing at a time.
+
+               The permission still gets its own tap rather than riding along
+               with the call, because a system dialog appearing in the same
+               instant the call starts is where most first calls die: the sheet
+               covers the screen in English and nothing they do next is what we
+               asked them to do. -->
           <div class="actions">
-            <button class="primary" id="btn-start">बात शुरू कीजिए</button>
-            <!-- Asking for the microphone as its own step, before the call. A
-                 permission sheet that appears in the same instant the call
-                 starts is the moment most first calls die: the elder taps the
-                 big button, an English system dialog covers the screen, and
-                 nothing they do next is what we asked them to do. -->
-            <button class="ghost" id="btn-mic">माइक की इजाज़त दीजिए</button>
+            <button class="primary" id="btn-start">माइक चालू कीजिए</button>
+            <p class="whisper" id="cta-hint">सखा को सुनने के लिए माइक की इजाज़त चाहिए</p>
             <div class="error" id="intro-error"></div>
           </div>
         </section>

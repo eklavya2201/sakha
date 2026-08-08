@@ -13,7 +13,7 @@
   var els = {
     name: $("name"), phone: $("phone"),
     start: $("btn-start"), again: $("btn-again"), end: $("btn-end"),
-    mute: $("btn-mute"), mic: $("btn-mic"), cc: $("btn-cc"),
+    mute: $("btn-mute"), cc: $("btn-cc"), ctaHint: $("cta-hint"),
     introError: $("intro-error"), callError: $("call-error"),
     timer: $("timer"), stateText: $("state-text"), connectText: $("connect-text"),
     edge: $("edge"), ccBox: $("cc"),
@@ -34,6 +34,9 @@
     // The glass only breathes during a call. On the other screens it would just
     // be an orange vignette with nothing behind it.
     els.edge.style.display = which === "call" ? "block" : "none";
+    // Helplines are hidden once the call is up — that screen is one word by
+    // design, and Sakha speaks the number himself if it is ever warranted.
+    document.querySelector(".wrap").classList.toggle("in-call", which === "call" || which === "connecting");
     var scroller = screens[which].querySelector(".scroll");
     if (scroller) scroller.scrollTop = 0;
   }
@@ -277,46 +280,65 @@
     show("done");
   }
 
-  // ── The microphone, asked for on its own ──────────────────────────────────
-  // Granting it here means the call itself starts silently, with no system
-  // dialog landing on top of the one screen we asked them to look at.
+  // ── One button, two jobs ──────────────────────────────────────────────────
+  // It asks for the microphone first, then becomes the call button. Never both
+  // at once: two buttons side by side made an elder choose between them, and
+  // the choice was meaningless — you always need both, in that order.
 
-  function micGranted() {
-    els.mic.textContent = "माइक चालू है ✓";
-    els.mic.disabled = true;
-    // Finished business. It stops looking like a second button competing with
-    // the one they actually have to press, and becomes a line of reassurance.
-    els.mic.classList.add("done");
+  var micReady = false;
+
+  function setCta(state) {
+    if (state === "asking") {
+      els.start.disabled = true;
+      els.start.textContent = "इजाज़त माँग रहे हैं…";
+      els.ctaHint.textContent = "फ़ोन पूछेगा — “Allow” दबाइए";
+      return;
+    }
+    els.start.disabled = false;
+    if (state === "ready") {
+      micReady = true;
+      els.start.textContent = "बात शुरू कीजिए";
+      els.ctaHint.textContent = "बटन दबाइए और बोलिए";
+    } else {
+      micReady = false;
+      els.start.textContent = "माइक चालू कीजिए";
+      els.ctaHint.textContent = "सखा को सुनने के लिए माइक की इजाज़त चाहिए";
+    }
   }
 
-  // If they already allowed it on a previous visit, the button is just clutter.
+  // Already allowed on a previous visit? Then skip straight to the call button
+  // rather than making them grant something they have already granted.
+  // Safari and Firefox do not answer this query, so those callers get the extra
+  // tap — which is honest and costs one second.
   if (navigator.permissions && navigator.permissions.query) {
     navigator.permissions
       .query({ name: "microphone" })
-      .then(function (p) { if (p.state === "granted") micGranted(); })
-      .catch(function () { /* Firefox and Safari do not report this; leave it */ });
+      .then(function (p) { if (p.state === "granted") setCta("ready"); })
+      .catch(function () { /* unsupported; leave it on the mic step */ });
   }
 
-  els.mic.addEventListener("click", function () {
+  function requestMic() {
     clearError(els.introError);
-    els.mic.disabled = true;
-    els.mic.textContent = "इजाज़त माँग रहे हैं…";
+    setCta("asking");
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then(function (stream) {
         // Release it immediately. Holding the track open would leave the
-        // phone's recording indicator lit while they are still reading.
+        // phone's recording indicator lit while they are still reading — which
+        // looks like it started listening before they said to.
         stream.getTracks().forEach(function (t) { t.stop(); });
-        micGranted();
+        setCta("ready");
       })
       .catch(function () {
-        els.mic.disabled = false;
-        els.mic.textContent = "माइक की इजाज़त दीजिए";
-        fail(els.introError, "माइक की इजाज़त नहीं मिली। फ़ोन की सेटिंग में इस पन्ने को माइक की इजाज़त दीजिए।");
+        setCta("mic");
+        fail(els.introError, "माइक की इजाज़त नहीं मिली। फ़ोन की सेटिंग में इस पन्ने को माइक की इजाज़त दीजिए, फिर दोबारा कोशिश कीजिए।");
       });
-  });
+  }
 
-  els.start.addEventListener("click", startCall);
+  els.start.addEventListener("click", function () {
+    if (micReady) startCall();
+    else requestMic();
+  });
   els.again.addEventListener("click", startCall);
   els.end.addEventListener("click", endCall);
 
