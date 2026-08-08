@@ -23,6 +23,7 @@ import { makeTts, ttsConfigured, cacheablePhrases, prewarmPhrases } from "./tts.
 import { speakReply, speakDemoReply, brainConfigured, reviewCall, MAX_HISTORY } from "./brain.js";
 import { pickAcknowledgement, allFixedPhrases } from "./fillers.js";
 import { buildIntroduction } from "./prompt.js";
+import { findScripture, renderScripture } from "./scripture.js";
 import { loadUser, saveCall } from "../memory.js";
 
 export const RELAY_PATH = "/voice/stream";
@@ -334,9 +335,22 @@ class RelayCall {
         await this.speak(sentence, controller.signal);
       };
 
+      // Look for scripture that speaks to what they just said. This sits
+      // BETWEEN the transcript and Claude on purpose: it is a local lexical
+      // search that finishes in about a millisecond, so it costs no API call and
+      // adds nothing measurable to a gap that is already 2.4 seconds. An
+      // embedding lookup here would have been a second of extra silence on every
+      // single turn.
+      //
+      // Most turns find nothing, and that is the intended result — someone
+      // saying she is lonely wants to be heard, not answered with a verse.
+      const passages = findScripture(text);
+      if (passages.length) this.log(`scripture offered: ${passages.map((p) => p.cite).join(", ")}`);
+
       const spoken = brainConfigured()
         ? await speakReply({
             systemPrompt: this.ticket.systemPrompt,
+            context: renderScripture(passages),
             history: this.history,
             signal: controller.signal,
             onSentence,

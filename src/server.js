@@ -11,6 +11,7 @@ import { converse } from "./brain.js";
 import { loadUser, saveExchange } from "./memory.js";
 import { attachVoiceRelay, warmVoiceCache } from "./voice/relay.js";
 import { createCallSession, voiceStatusLine, voiceMode } from "./voice/session.js";
+import { loadScripture, scriptureStatusLine } from "./voice/scripture.js";
 
 const app = express();
 app.use(express.json());
@@ -149,6 +150,11 @@ server.listen(port, () => {
   console.log(`Krishna Sakha listening on http://localhost:${port}`);
   console.log(`Phone page: http://localhost:${port}/m`);
   console.log(voiceStatusLine());
+  // Indexed once, in memory, before the first caller. Missing corpus is not an
+  // error — Sakha without scripture is still Sakha, he just cannot cite.
+  loadScripture()
+    .then(() => console.log(scriptureStatusLine()))
+    .catch((e) => console.warn(`⚠️  Could not load scripture: ${e.message}`));
   if (voiceMode() === "demo") {
     console.log("  ↳ demo mode: no keys needed. Turns are detected from real speech, the words are scripted.");
   }

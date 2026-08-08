@@ -65,7 +65,7 @@ function isAbort(e, signal) {
  *   relay can hold the model back while a sentence is still being spoken
  * @returns {Promise<string>} everything that was actually said
  */
-export async function speakReply({ systemPrompt, history, signal, onSentence }) {
+export async function speakReply({ systemPrompt, context = null, history, signal, onSentence }) {
   const err = brainConfigError();
   if (err) throw new Error(err);
 
@@ -89,10 +89,16 @@ export async function speakReply({ systemPrompt, history, signal, onSentence }) 
     {
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      // The persona is identical on every turn of every call, so it is the one
-      // thing worth caching. usage is logged below so "is it actually caching?"
-      // is answered by evidence rather than hope.
-      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+      // Two blocks, and the order is load-bearing. The persona is identical on
+      // every turn of every call, so it is cached. Retrieved scripture changes
+      // every turn, so it goes AFTER the cache breakpoint — put it first and the
+      // persona would be re-billed in full on each turn instead of being read
+      // from cache. usage is logged below so "is it actually caching?" is
+      // answered by evidence rather than hope.
+      system: [
+        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+        ...(context ? [{ type: "text", text: context }] : []),
+      ],
       messages: history,
     },
     { signal }
