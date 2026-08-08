@@ -50,7 +50,7 @@ services:
       - key: SARVAM_TTS_SPEAKER
         value: karun
       - key: SARVAM_TTS_PACE
-        value: "0.9"
+        value: "1.0"
 
       # ── Claude: the thinking ──
       # Without this the service still boots and /m still runs a whole call —
@@ -84,4 +84,4 @@ services:
       - key: VOICE_PREWARM
         value: "true"
       - key: SARVAM_TTS_PITCH
-        value: "-0.2"
+        value: "0"

@@ -70,7 +70,10 @@ const MAX_CALL_MS = Number(process.env.VOICE_MAX_CALL_MS || 15 * 60 * 1000);
 // follow when your hearing is going. It goes into the audio stream rather than
 // being a timer, so the browser's playback queue schedules it exactly like
 // speech — a setTimeout here would race the queue and land in the wrong place.
-const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 420);
+// Raised from 420 when the words themselves sped up to pace 1.0. This is where
+// clarity for an older ear is bought now: the breath between sentences rather
+// than dragging out each one. Lively, but never rushing you.
+const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 520);
 
 // Recognised words needed to interrupt Sakha mid-sentence.
 //

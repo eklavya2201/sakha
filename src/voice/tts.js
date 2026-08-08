@@ -39,18 +39,26 @@ const MODEL = process.env.SARVAM_TTS_MODEL || "bulbul:v2";
 // or Sakha becomes two different people.
 const SPEAKER = process.env.SARVAM_TTS_SPEAKER || "karun";
 
-// 0.9 — slowed. Not a stylistic preference: hearing loss above 2kHz is near
-// universal past seventy, and slower speech is the single cheapest thing that
-// makes a voice easier to follow.
-const PACE = Number(process.env.SARVAM_TTS_PACE || 0.9);
+// 1.0 — normal speed, chosen by LISTENING after 0.9 was picked by reasoning.
+//
+// The argument for slowing him was real: hearing loss past seventy takes the
+// high frequencies first and slower speech is easier to follow. But 0.9 plus a
+// lowered pitch did not sound gentle, it sounded DULL — and Sakha is meant to
+// carry some of Krishna's liveliness, which is the whole reason an elder would
+// want to talk to him rather than be managed by him.
+//
+// Clarity is bought back where it costs nothing: the pause BETWEEN sentences
+// below, which gives an elder time to catch up without making each sentence
+// drag. Quick and warm, but never rushing you.
+const PACE = Number(process.env.SARVAM_TTS_PACE || 1.0);
 
-// Negative pitches karun down. Not vanity: a lower voice carries better through
-// age-related hearing loss, which takes the high frequencies first, and it reads
-// as steadier and less hurried — which is most of what this companion is for.
-// Range is roughly -0.75 to 0.75; past about -0.5 it stops sounding like a
-// person. Must match SARVAM_TTS_PITCH in src/tts.js or the WhatsApp Sakha and
-// the calling Sakha become two different men.
-const PITCH = Number(process.env.SARVAM_TTS_PITCH || -0.2);
+// 0 — karun's own pitch. Lowering it was tried at -0.2, -0.4 and -0.6 and every
+// one of them made him sound heavier and more tired, not warmer. Deep plus slow
+// is how you get a voice nobody wants to ring back.
+//
+// Range is roughly -0.75 to 0.75. Must match SARVAM_TTS_PITCH in src/tts.js, or
+// the WhatsApp Sakha and the calling Sakha become two different men.
+const PITCH = Number(process.env.SARVAM_TTS_PITCH || 0);
 
 // Ceiling on one sentence, and a safety net rather than a latency control:
 // tripping it means something is already wrong. It has to exist because every
