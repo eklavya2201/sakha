@@ -130,6 +130,14 @@ app.post("/api/voice/session", async (req, res) => {
 // different surface with a different design (large type, one button, Hindi).
 app.get("/m", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "m.html")));
 
+// The deployed URL is the thing people actually paste into a message, and a
+// bare domain answering 404 looks broken to whoever was sent it.
+app.get("/", (_req, res) => res.redirect("/m"));
+
+// For the host's health check. Deliberately not "/" — that is a redirect, and a
+// checker that does not follow redirects would read it as the service being down.
+app.get("/healthz", (_req, res) => res.json({ ok: true, voice: voiceMode() }));
+
 const port = process.env.PORT || 3000;
 
 // An explicit http.Server rather than app.listen(), because the relay is a

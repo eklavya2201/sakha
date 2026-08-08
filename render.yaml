@@ -1,0 +1,81 @@
+# Deploying Sakha to Render.
+#
+# Render looks for this file at the repo root on the branch you point the
+# Blueprint at. Without it the Blueprint page just says "render.yaml not found",
+# which is what it means: not a build failure, a missing file.
+#
+# One service, because the WebSocket relay MUST live on the same origin as the
+# page. Render gives a service exactly one port, and the /voice/stream upgrade
+# is handled on the same http.Server as Express (see src/server.js).
+#
+# ⚠️ READ THIS BEFORE TRUSTING IT WITH REAL PEOPLE — free instances have NO
+# persistent disk. Sakha's memory is data/users/<phone>.json, so on the free plan
+# every remembered fact is erased on each deploy, each restart, and each wake
+# from sleep. An elder who told Sakha about her grandson on Tuesday meets a
+# stranger on Wednesday, which is the one failure this product cannot afford.
+# Free is fine for a demo. Before real users, move to a paid instance and
+# uncomment the disk below, or put memory somewhere that outlives the container.
+#
+# Free instances also sleep after ~15 minutes idle and take ~30s to wake. The
+# first caller after a sleep waits through that before Sakha says hello.
+
+services:
+  - type: web
+    name: krishna-sakha
+    runtime: node
+    plan: free
+    region: singapore # closest Render region to India — every call's audio crosses it twice
+    buildCommand: npm install
+    startCommand: npm start
+    # Not "/" — that is a redirect to /m, and a checker that does not follow
+    # redirects would read it as the service being down.
+    healthCheckPath: /healthz
+
+    # disk:                        # paid instances only
+    #   name: sakha-memory
+    #   mountPath: /opt/render/project/src/data
+    #   sizeGB: 1
+
+    envVars:
+      # Do NOT set PORT. Render injects it, and src/server.js already reads it.
+      - key: NODE_VERSION
+        value: "22"
+
+      # ── Sarvam: the hearing AND the speaking, on WhatsApp and on calls ──
+      # The one key this product cannot run without. Set it in the dashboard.
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SARVAM_STT_MODEL
+        value: saarika:v2.5
+      - key: SARVAM_TTS_SPEAKER
+        value: karun
+      - key: SARVAM_TTS_PACE
+        value: "0.9"
+
+      # ── Claude: the thinking ──
+      # Without this the service still boots and /m still runs a whole call —
+      # the boot line says [partial] and Sakha's replies come from a script.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-opus-5
+      - key: CLAUDE_EFFORT
+        value: low
+      # Sonnet on calls, not Opus: a call turn is latency-bound and every extra
+      # second is an elder sitting in silence wondering if the line dropped.
+      - key: VOICE_MODEL
+        value: claude-sonnet-5
+
+      # ── WhatsApp (Meta Cloud API) ──
+      # Only the voice-note half needs these. /m works without any of them.
+      # ⚠️ WHATSAPP_TOKEN from the Meta test console expires every ~24h. Use a
+      # permanent system-user token here or the WhatsApp side 401s every morning
+      # while the call page keeps working, which is a confusing way to find out.
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: VERIFY_TOKEN
+        sync: false
+      - key: GRAPH_VERSION
+        value: v23.0
