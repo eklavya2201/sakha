@@ -33,6 +33,32 @@ import { OUT_SAMPLE_RATE } from "./format.js";
 const SARVAM_HOST = "api.sarvam.ai";
 const MODEL = process.env.SARVAM_TTS_MODEL || "bulbul:v2";
 
+// Voices are NOT shared between models, and picking a mismatched pair fails with
+// HTTP 400 at synthesis time — which means Sakha greets nobody and the call is
+// silent, with the reason buried in a log. Cheap to catch at boot instead.
+//
+// bulbul:v3 is the newer model and reportedly the better one; its roster is
+// completely separate from v2's, so switching model means switching voice too.
+const V2_SPEAKERS = ["anushka", "abhilash", "manisha", "vidya", "arya", "karun", "hitesh"];
+const V3_SPEAKERS = [
+  "aditya", "ritu", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev",
+  "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh",
+  "ashutosh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti",
+  "suhani", "mohit", "kavitha", "rehan", "soham", "rupali",
+];
+
+/** null when the pair is fine, otherwise what is wrong and how to fix it. */
+export function ttsSpeakerWarning() {
+  const wanted = MODEL.includes("v3") ? V3_SPEAKERS : V2_SPEAKERS;
+  const speaker = process.env.SARVAM_TTS_SPEAKER || "karun";
+  if (wanted.includes(speaker)) return null;
+  const other = MODEL.includes("v3") ? V2_SPEAKERS : V3_SPEAKERS;
+  const hint = other.includes(speaker)
+    ? `"${speaker}" belongs to the other model.`
+    : `"${speaker}" is not a Sarvam voice.`;
+  return `SARVAM_TTS_SPEAKER="${speaker}" is not compatible with ${MODEL} — ${hint} Sakha will be SILENT on every call. Voices for ${MODEL}: ${wanted.slice(0, 8).join(", ")}…`;
+}
+
 // karun — the same voice the WhatsApp bot already replies in, so an elder who
 // has been sending voice notes and then taps Call hears the same friend, not a
 // stranger. If this is ever changed, change it in .env for both paths at once

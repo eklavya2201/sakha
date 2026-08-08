@@ -17,7 +17,7 @@
 
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { IN_SAMPLE_RATE, silence } from "./format.js";
+import { IN_SAMPLE_RATE, silence, fadeEdges } from "./format.js";
 import { makeStt } from "./stt.js";
 import { makeTts, ttsConfigured, cacheablePhrases, prewarmPhrases } from "./tts.js";
 import { speakReply, speakDemoReply, brainConfigured, reviewCall, MAX_HISTORY } from "./brain.js";
@@ -72,10 +72,19 @@ const MAX_CALL_MS = Number(process.env.VOICE_MAX_CALL_MS || 15 * 60 * 1000);
 // follow when your hearing is going. It goes into the audio stream rather than
 // being a timer, so the browser's playback queue schedules it exactly like
 // speech — a setTimeout here would race the queue and land in the wrong place.
-// Raised from 420 when the words themselves sped up to pace 1.0. This is where
-// clarity for an older ear is bought now: the breath between sentences rather
-// than dragging out each one. Lively, but never rushing you.
-const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 520);
+// The breath between sentences.
+//
+// Cut from 520ms to 220ms after listening to a three-sentence reply built the
+// way the relay builds it, against the same paragraph synthesised in one go.
+// 520 was reasoned rather than heard: Sarvam ALREADY leaves natural trailing
+// silence at the end of each clip, so half a second on top of that is not a
+// breath, it is a gap — and a uniform gap at every full stop is a large part of
+// what makes a voice sound like a machine reading a list.
+//
+// The real remaining gap is that each sentence is a separate synthesis, so
+// prosody restarts every time. Fixing that properly means sending fewer, longer
+// requests, which trades against how fast the first word arrives.
+const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 220);
 
 // Recognised words needed to interrupt Sakha mid-sentence.
 //
@@ -402,7 +411,10 @@ class RelayCall {
       text,
       (pcm) => {
         if (signal?.aborted || this.closed) return;
-        send(this.ws, { event: "media_output", media: { payload: pcm.toString("base64") } });
+        // Ramp the edges to zero before this meets the silence on either side.
+        // A clip that stops mid-waveform against digital silence is a step, and
+        // a step is a click — which on a phone speaker is heard as crackle.
+        send(this.ws, { event: "media_output", media: { payload: fadeEdges(pcm).toString("base64") } });
       },
       signal
     );

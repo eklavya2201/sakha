@@ -31,3 +31,33 @@ export const OUT_SAMPLE_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 22050
 export function silence(ms) {
   return Buffer.alloc(Math.round((OUT_SAMPLE_RATE * ms) / 1000) * 2);
 }
+
+/**
+ * Ramp the first and last few milliseconds of a clip to zero.
+ *
+ * This is the cure for the faint CLICK between sentences. Sarvam returns one
+ * clip per sentence and we butt them against digital silence — but a clip
+ * almost never ends exactly at zero amplitude, so the join is a step
+ * discontinuity in the waveform, and a step is a click. It is small, and on a
+ * phone speaker it reads as "crackly", which is exactly how it was described.
+ *
+ * 8ms is short enough to be inaudible as a fade and long enough to remove the
+ * step at any frequency that matters in speech.
+ *
+ * Safe because Sarvam sends a whole sentence as ONE chunk (see tts.js). If that
+ * ever changes, fading every chunk would put a dip inside the sentence — fade
+ * only the first and last chunk of an utterance instead.
+ */
+export function fadeEdges(pcm, ms = 8) {
+  const samples = pcm.length >> 1;
+  const n = Math.min(Math.round((OUT_SAMPLE_RATE * ms) / 1000), samples >> 1);
+  if (n <= 0) return pcm;
+  const out = Buffer.from(pcm);
+  for (let i = 0; i < n; i++) {
+    const gain = i / n;
+    out.writeInt16LE(Math.round(out.readInt16LE(i * 2) * gain), i * 2);
+    const j = samples - 1 - i;
+    out.writeInt16LE(Math.round(out.readInt16LE(j * 2) * gain), j * 2);
+  }
+  return out;
+}
