@@ -12,6 +12,7 @@ import { loadUser, saveExchange } from "./memory.js";
 import { attachVoiceRelay, warmVoiceCache } from "./voice/relay.js";
 import { createCallSession, voiceStatusLine, voiceMode } from "./voice/session.js";
 import { loadScripture, scriptureStatusLine } from "./voice/scripture.js";
+import { panchangStatusLine } from "./voice/panchang.js";
 
 const app = express();
 app.use(express.json());
@@ -155,6 +156,7 @@ server.listen(port, () => {
   loadScripture()
     .then(() => console.log(scriptureStatusLine()))
     .catch((e) => console.warn(`⚠️  Could not load scripture: ${e.message}`));
+  console.log(panchangStatusLine());
   if (voiceMode() === "demo") {
     console.log("  ↳ demo mode: no keys needed. Turns are detected from real speech, the words are scripted.");
   }

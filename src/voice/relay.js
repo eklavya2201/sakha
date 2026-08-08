@@ -24,6 +24,7 @@ import { speakReply, speakDemoReply, brainConfigured, reviewCall, MAX_HISTORY } 
 import { pickAcknowledgement, allFixedPhrases } from "./fillers.js";
 import { buildIntroduction } from "./prompt.js";
 import { findScripture, renderScripture } from "./scripture.js";
+import { findRules, renderRules } from "./rules.js";
 import { loadUser, saveCall } from "../memory.js";
 
 export const RELAY_PATH = "/voice/stream";
@@ -347,10 +348,19 @@ class RelayCall {
       const passages = findScripture(text);
       if (passages.length) this.log(`scripture offered: ${passages.map((p) => p.cite).join(", ")}`);
 
+      // Practice rules for today, narrowed by what they actually asked about.
+      // Day rules (it is Ekadashi) apply regardless; topic rules (haircuts,
+      // travel) only once they raise it — an irrelevant rule in the prompt is
+      // one more thing the model will feel obliged to mention.
+      const rules = findRules(this.ticket.panchang, text);
+      if (rules.length) this.log(`rules offered: ${rules.map((r) => r.id).join(", ")}`);
+
+      const context = [renderScripture(passages), renderRules(rules)].filter(Boolean).join("\n\n") || null;
+
       const spoken = brainConfigured()
         ? await speakReply({
             systemPrompt: this.ticket.systemPrompt,
-            context: renderScripture(passages),
+            context,
             history: this.history,
             signal: controller.signal,
             onSentence,

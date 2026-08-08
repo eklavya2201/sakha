@@ -9,6 +9,7 @@
 
 import { loadUser } from "../memory.js";
 import { buildCallPrompt, buildIntroduction } from "./prompt.js";
+import { getPanchang, renderPanchang } from "./panchang.js";
 import { mintRelayTicket, RELAY_PATH } from "./relay.js";
 import { IN_SAMPLE_RATE, OUT_SAMPLE_RATE } from "./format.js";
 import { sttConfigured } from "./stt.js";
@@ -67,11 +68,23 @@ export async function createCallSession({ phone = null, name = null, origin = ""
   const mem = waId ? await loadUser(waId) : { facts: [], history: [] };
   const caller = { name: name ? String(name).trim().slice(0, 40) : null, facts: mem.facts };
 
+  // Today, once, at the start of the call. It cannot change mid-conversation and
+  // computing it here keeps "क्या आज बाल कटवा सकते हैं?" free to answer — no
+  // lookup, no tool call, no second of silence.
+  //
+  // It goes inside the CACHED half of the prompt deliberately: it is identical
+  // for every caller all day, so every call after the first reads it from cache
+  // rather than paying for it again.
+  const panchang = getPanchang();
+
   const token = mintRelayTicket({
     phone: waId,
     language: process.env.SARVAM_STT_LANGUAGE || "hi-IN",
-    systemPrompt: buildCallPrompt(caller),
+    systemPrompt: [buildCallPrompt(caller), renderPanchang(panchang)].filter(Boolean).join("\n\n"),
     introduction: buildIntroduction(caller),
+    // Kept on the ticket so each turn can match rules against it without
+    // recomputing, and so a call spanning midnight keeps the day it started on.
+    panchang,
   });
 
   const wsOrigin = String(origin).replace(/^http/, "ws");
