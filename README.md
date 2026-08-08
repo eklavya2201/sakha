@@ -13,6 +13,7 @@ A WhatsApp voice bot for elderly people in India who are lonely or quietly depre
 | Piece | Status |
 |---|---|
 | Code (webhook → STT → Claude → TTS → voice note) | ✅ done, tested |
+| **Live phone call from a browser (`/m`)** | ✅ built, verified end to end — `npm run voice:check` |
 | Sarvam key (speech-to-text + text-to-speech) | ✅ in `.env`, round-trip verified |
 | Meta app "SAKHA" + WhatsApp test number | ✅ created, outbound tested |
 | Webhook (callback URL + `messages` subscribed + app subscribed to WABA) | ✅ verified — inbound "hi" reached the server |
@@ -43,16 +44,79 @@ Elder sends WhatsApp voice note (ogg/opus)
 - **Memory**: `data/users/<phone>.json` — durable facts (grandchildren's names, the son who doesn't call, knee pain) + last ~12 exchanges, injected into every conversation. Memory is what turns a bot into a relationship.
 - **Safety**: every message is classified `none / distress / crisis`. On `crisis` (self-harm signals, incl. Hindi idioms), the voice reply stays warm and mentions **Tele-MANAS 14416**; a text with **14416** and **Elder Line 14567** is also sent so the numbers persist on screen. The persona hard-blocks medical/financial advice and future predictions, and never claims to *be* God.
 
+## 📞 The second way in: a live call from a phone browser (`/m`)
+
+WhatsApp needs an elder to find a chat, hold the mic button, and let go at the
+right moment. `/m` needs one tap. They open a link — a son can send
+`/m?phone=98XXXXXXXX&name=कमला` so his mother only ever taps — press one big
+button, and **talk to Sakha in real time**, the way you talk on the phone.
+
+It is the same Sakha. The call reads and writes `data/users/<phone>.json`, so
+someone who sends voice notes on Monday and taps Call on Thursday is met by a
+friend who remembers Monday.
+
+```
+Elder taps "बात शुरू कीजिए" on their phone
+   → mic → AudioWorklet → 16kHz PCM ──WebSocket──► src/voice/relay.js
+        ├─► Sarvam streaming STT   hears, and says when the turn ended
+        ├─► Claude (sonnet)        streams a reply, SENTENCE BY SENTENCE
+        └─► Sarvam streaming TTS   bulbul "karun", the WhatsApp voice
+   ◄── PCM ──WebSocket── speaker
+```
+
+**Why Sarvam for both halves, and not Deepgram or ElevenLabs.** Deepgram's Aura
+has no Hindi voice at all, and its STT is weaker at the Hinglish code-mixing
+elders actually speak. ElevenLabs has better raw audio but weaker Hindi
+pronunciation of names and numbers, and it would make the call voice differ from
+the WhatsApp voice. Sarvam is the one provider that is good at exactly the thing
+this product is made of.
+
+**No keys? It still runs.** With nothing in `.env` the page runs a whole call in
+demo mode: real turn-taking from real speech (energy VAD), a scripted brain, and
+Sakha's lines spoken by the phone's own Hindi voice. It is how the flow was built
+before the APIs were wired, and it is the fastest way to tell "our bug" from
+"their outage" when a live call breaks.
+
+```sh
+npm run voice:check    # boots a server, makes a whole call, feeds it real Hindi speech
+```
+
+### What is worth knowing before you tune it
+
+| Thing | Measured, not guessed |
+|---|---|
+| Silence after the caller stops, before Sakha reacts | **~2.4s**. A Hindi acknowledgement ("अच्छा, समझा…") is spoken into that gap on purpose — 2.4s of nothing reads as a dead line to an elder |
+| Sarvam TTS sample rate | 22050 by default. **`speech_sample_rate`** is the only parameter that changes it; `output_audio_sample_rate` and `sample_rate` are silently ignored |
+| Sarvam streaming TTS | Does **not** stream. One `text` message comes back as one audio blob, however long. Responsiveness comes from *us* splitting the reply into sentences — never hand it a whole reply |
+| Barge-in | Waits for a finished transcript, never for the raw speech-start event. On speakerphone Sakha's own voice leaks into the mic, and cutting on that made him interrupt *himself* three words in |
+| Turn detection | Sarvam's own VAD (`vad_signals=true`), not hand-rolled. `SARVAM_STT_HIGH_VAD` ends turns sooner and is wrong here — elders pause mid-sentence to find a word |
+
 ## Project structure
 
 ```
-src/server.js        Express webhook (verify + receive, dedupe, orchestration)
+src/server.js        Express webhook + /m page + /api/voice/session (verify, dedupe, orchestration)
 src/whatsapp.js      Cloud API: download/upload media, send voice note / text
 src/stt.js           Sarvam speech-to-text (saarika, auto language)
 src/tts.js           Sarvam text-to-speech (bulbul, slow calm voice)
 src/audio.js         ffmpeg ogg↔wav conversions (ffmpeg-static, no install needed)
 src/brain.js         Claude persona + memory + safety classification
-src/memory.js        per-user JSON store (facts + history)
+src/memory.js        per-user JSON store (facts + history) — shared by WhatsApp and calls
+
+src/voice/relay.js   ONE LIVE CALL: turn lifecycle, barge-in, speech queue, teardown
+src/voice/session.js mints the single-use ticket, loads who is calling
+src/voice/stt.js     Sarvam streaming STT (+ a keyless demo engine)
+src/voice/tts.js     Sarvam streaming TTS (+ phrase cache for repeated lines)
+src/voice/brain.js   Claude streamed sentence-by-sentence, + the after-call review
+src/voice/prompt.js  Sakha's persona for a CALL (shorter turns than WhatsApp)
+src/voice/fillers.js Hindi acknowledgements spoken while Claude is still writing
+src/voice/sentences.js  splits streaming text on the danda (।) as well as . ? !
+src/voice/format.js  the one audio format: 16kHz mono PCM, both directions
+
+public/m.html        the phone page — bright, Hindi, one button
+public/m.js          screens, timer, the topic constellation
+public/voiceClient.js  mic → PCM → WebSocket → speaker (knows nothing about Sakha)
+
+scripts/voice-check.js  end-to-end call preflight (`npm run voice:check`)
 scripts/test-sarvam.js  TTS→ffmpeg→STT round-trip test (no WhatsApp needed)
 docs/API-SETUP-GUIDE.md how the API keys were obtained (for reference/redo)
 start-sakha.bat      one-click: server + ngrok tunnel
