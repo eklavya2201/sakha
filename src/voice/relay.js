@@ -334,7 +334,11 @@ class RelayCall {
     if (ack) {
       this.lastAck = ack;
       this.sendAgentText(ack);
-      this.speak(ack, controller.signal);
+      // No pause AFTER it. The wait for Claude already falls here, and adding
+      // silence on top produced "अच्छा… [gap] …ठीक है, तो ये कीजिए", which was
+      // reported as sounding like a machine buffering. The gap belongs before
+      // the sound, as thinking time, not after it.
+      this.speak(ack, controller.signal, { pause: false });
     }
 
     try {
@@ -396,16 +400,16 @@ class RelayCall {
   // Queue something to say. Returns a promise that settles when it has finished
   // being synthesised, so callers can apply backpressure — but callers that do
   // NOT await it (the acknowledgement) still get correct ordering.
-  speak(text, signal) {
+  speak(text, signal, { pause = true } = {}) {
     this.speechChain = this.speechChain
-      .then(() => this.speakSentence(text, signal))
+      .then(() => this.speakSentence(text, signal, { pause }))
       .catch((e) => {
         if (e?.name !== "AbortError") console.error("[sakha:call] speech failed:", e.message);
       });
     return this.speechChain;
   }
 
-  async speakSentence(text, signal) {
+  async speakSentence(text, signal, { pause = true } = {}) {
     if (!text || !this.tts || this.closed) return;
     await this.tts.speak(
       text,
@@ -418,7 +422,7 @@ class RelayCall {
       },
       signal
     );
-    if (SENTENCE_PAUSE_MS > 0 && !signal?.aborted && !this.closed && !this.tts.demo) {
+    if (pause && SENTENCE_PAUSE_MS > 0 && !signal?.aborted && !this.closed && !this.tts.demo) {
       send(this.ws, { event: "media_output", media: { payload: silence(SENTENCE_PAUSE_MS).toString("base64") } });
     }
   }

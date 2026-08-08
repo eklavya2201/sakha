@@ -9,8 +9,8 @@ export async function synthesize(text, languageCode = "hi-IN") {
     body: JSON.stringify({
       text: text.slice(0, 1400),
       target_language_code: languageCode,
-      speaker: process.env.SARVAM_TTS_SPEAKER || "karun",
-      model: "bulbul:v2",
+      speaker: process.env.SARVAM_TTS_SPEAKER || "aditya",
+      model: process.env.SARVAM_TTS_MODEL || "bulbul:v3",
       pace: Number(process.env.SARVAM_TTS_PACE || 1.0),
       // Same voice as the phone call, deliberately — someone who sends voice
       // notes and then taps Call must hear the same friend, not a stranger with

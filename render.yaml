@@ -47,8 +47,10 @@ services:
         sync: false
       - key: SARVAM_STT_MODEL
         value: saarika:v2.5
+      - key: SARVAM_TTS_MODEL
+        value: bulbul:v3
       - key: SARVAM_TTS_SPEAKER
-        value: karun
+        value: aditya
       - key: SARVAM_TTS_PACE
         value: "1.0"
 

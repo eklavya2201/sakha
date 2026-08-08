@@ -161,6 +161,18 @@ async function main() {
     ok(`greeting: "${state.agentLines[0]}"`);
     if (session.voice === "sarvam") {
       await waitFor(() => state.audioBytes > 0, 20000, "greeting audio");
+      // Wait for it to STOP arriving before measuring. bulbul:v3 streams a
+      // sentence as ~65 chunks over a couple of seconds, so measuring at the
+      // first byte reported 0.3s of a 5.7s greeting and failed the check —
+      // an assertion written when v2 returned the whole thing in one blob.
+      let stable = 0;
+      for (let seen = -1; stable < 800; stable += 100) {
+        if (state.audioBytes !== seen) {
+          seen = state.audioBytes;
+          stable = 0;
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
       const seconds = state.audioBytes / (OUT_RATE * 2);
       ok(`greeting audio: ${state.audioBytes} bytes ≈ ${seconds.toFixed(1)}s of speech`);
       if (seconds < 0.5) bad("that is too short to be a spoken sentence — check the TTS sample rate");

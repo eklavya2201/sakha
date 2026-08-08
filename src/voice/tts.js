@@ -10,17 +10,21 @@
 //   send  {"type":"text","data":{"text":"…"}}
 //   recv  {"type":"audio","data":{"content_type":"audio/pcm","audio":"<base64>"}}
 //
-// ⚠️ Two things the name "streaming" leads you to expect, which are NOT true and
-// which the design above is shaped around — both measured, don't re-litigate:
+// ⚠️ Two measured facts the design is shaped around. Don't re-litigate:
 //
-//  1. It does not stream. A whole `text` message comes back as ONE audio
-//     message, however long it is: a 13-second paragraph arrived as a single
-//     570KB blob. So the first syllable does not start early, and the only thing
-//     that makes replies feel responsive is US splitting the reply into
-//     sentences and asking for them one at a time (see sentences.js). Never hand
-//     this socket a whole reply.
-//  2. There is no `final` / `done` event, so a sentence is finished when its
-//     audio arrives, and the timeout below is the only other way out.
+//  1. THE TWO MODELS CHUNK COMPLETELY DIFFERENTLY. For the same sentence, v2
+//     returns ONE blob and v3 returned 62 chunks. So "the first audio message
+//     means the sentence is done" was correct for v2 and would cut v3 off after
+//     about 90ms. Completion is detected by the audio going quiet — see
+//     handleMessage.
+//  2. There is no `final` / `done` event on this socket at all. Waiting 8s after
+//     a flush produced no non-audio message on either model, so the idle gap is
+//     the only completion signal that exists.
+//
+// Why the WebSocket and not the far simpler POST /text-to-speech: measured on
+// v3, the socket delivered its first audio in 219ms against 2250ms for the
+// batch endpoint. Two seconds of extra dead air per sentence, on top of the
+// 2.4s the caller already waits, is not a trade worth making for simpler code.
 //
 // Sample rate: the output is 22050 by default. `speech_sample_rate` is the
 // parameter that actually changes it — `output_audio_sample_rate` and
@@ -31,7 +35,7 @@ import WebSocket from "ws";
 import { OUT_SAMPLE_RATE } from "./format.js";
 
 const SARVAM_HOST = "api.sarvam.ai";
-const MODEL = process.env.SARVAM_TTS_MODEL || "bulbul:v2";
+const MODEL = process.env.SARVAM_TTS_MODEL || "bulbul:v3";
 
 // Voices are NOT shared between models, and picking a mismatched pair fails with
 // HTTP 400 at synthesis time — which means Sakha greets nobody and the call is
@@ -50,7 +54,7 @@ const V3_SPEAKERS = [
 /** null when the pair is fine, otherwise what is wrong and how to fix it. */
 export function ttsSpeakerWarning() {
   const wanted = MODEL.includes("v3") ? V3_SPEAKERS : V2_SPEAKERS;
-  const speaker = process.env.SARVAM_TTS_SPEAKER || "karun";
+  const speaker = process.env.SARVAM_TTS_SPEAKER || "aditya";
   if (wanted.includes(speaker)) return null;
   const other = MODEL.includes("v3") ? V2_SPEAKERS : V3_SPEAKERS;
   const hint = other.includes(speaker)
@@ -59,11 +63,14 @@ export function ttsSpeakerWarning() {
   return `SARVAM_TTS_SPEAKER="${speaker}" is not compatible with ${MODEL} — ${hint} Sakha will be SILENT on every call. Voices for ${MODEL}: ${wanted.slice(0, 8).join(", ")}…`;
 }
 
-// karun — the same voice the WhatsApp bot already replies in, so an elder who
-// has been sending voice notes and then taps Call hears the same friend, not a
-// stranger. If this is ever changed, change it in .env for both paths at once
-// or Sakha becomes two different people.
-const SPEAKER = process.env.SARVAM_TTS_SPEAKER || "karun";
+// aditya on bulbul:v3, chosen by listening to the same three-sentence reply in
+// v2/karun and in three v3 voices. v3 is smoother through a sentence and the
+// difference is not subtle.
+//
+// src/tts.js (WhatsApp) reads the same two env vars, so an elder who sends voice
+// notes and then taps Call hears the same friend rather than a stranger with the
+// same name. Change them together or Sakha becomes two different men.
+const SPEAKER = process.env.SARVAM_TTS_SPEAKER || "aditya";
 
 // 1.0 — normal speed, chosen by LISTENING after 0.9 was picked by reasoning.
 //
@@ -92,6 +99,20 @@ const PITCH = Number(process.env.SARVAM_TTS_PITCH || 0);
 // never answers would silence Sakha for the rest of the call while the caller
 // hears nothing and no error is raised anywhere.
 const SPEAK_TIMEOUT_MS = Number(process.env.TTS_SPEAK_TIMEOUT_MS || 12000);
+
+// How long a silence on the socket means "this sentence is finished". See the
+// note in handleMessage — this is the only completion signal Sarvam gives.
+//
+// 700ms, and it is deliberately generous. Measured in ISOLATION the largest gap
+// between chunks was 219ms, so 400 looked like plenty — but inside a live call
+// the same greeting came back 3.1s long against 5.75s standalone, because this
+// process is simultaneously pushing microphone frames at Sarvam and reading a
+// Claude stream, and a busy event loop delays these callbacks. Cutting a
+// sentence off mid-word is far worse than holding the queue an extra moment.
+//
+// Costs nothing audible: v3 generates ~3x faster than real time, so the browser
+// playback queue stays well ahead even with this pause after every sentence.
+const IDLE_DONE_MS = Number(process.env.TTS_IDLE_DONE_MS || 700);
 
 export function ttsConfigured() {
   return Boolean(process.env.SARVAM_API_KEY);
@@ -177,10 +198,24 @@ class SarvamTts {
 
     if (msg.type === "audio" && typeof msg.data?.audio === "string") {
       pending.onAudio(Buffer.from(msg.data.audio, "base64"));
-      // No `final` event exists, and one text message yields one audio message,
-      // so the audio IS the completion. See the warning at the top.
-      this.pending = null;
-      pending.resolve();
+      // A sentence is finished when the audio STOPS arriving.
+      //
+      // There is no `final` event on this socket — measured on both models,
+      // waiting 8s after a flush produced no non-audio message at all. And the
+      // two models chunk completely differently: v2 returns one blob per
+      // sentence, v3 returned 62 for the same sentence. So "first chunk means
+      // done" was right for v2 and would cut v3 off after its first 90ms.
+      //
+      // An idle gap is the only signal available. v3 delivers 4.2s of audio in
+      // 1.7s wall-clock, so chunks arrive far faster than they play — a quiet
+      // stretch this long reliably means the sentence is over, not that the
+      // network hiccuped.
+      clearTimeout(pending.idle);
+      pending.idle = setTimeout(() => {
+        if (this.pending?.seq !== pending.seq) return;
+        this.pending = null;
+        pending.resolve();
+      }, IDLE_DONE_MS);
       return;
     }
     if (msg.type === "error") {
@@ -213,14 +248,22 @@ class SarvamTts {
         resolve();
       }, SPEAK_TIMEOUT_MS);
 
+      // Declared before settle() so both the hard timeout and the idle timer can
+      // be cleared on every exit path. A stray idle timer would resolve a
+      // sentence that was already aborted, letting the next one start early.
+      const entry = { onAudio, seq: mine, idle: null };
+
       const settle = (fn) => (v) => {
         clearTimeout(timeout);
+        clearTimeout(entry.idle);
         fn(v);
       };
       resolve = settle(resolve);
       reject = settle(reject);
 
-      this.pending = { onAudio, resolve, reject, seq: mine };
+      entry.resolve = resolve;
+      entry.reject = reject;
+      this.pending = entry;
 
       const onAbort = () => {
         if (this.pending?.seq !== mine) return;
