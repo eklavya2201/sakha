@@ -249,7 +249,7 @@
         active = result.call;
         session = result.session;
         startAnimations(active);
-        if (session.mode !== "live") {
+        if (session.mode !== "live" && els.mode) {
           els.mode.textContent = session.mode === "demo" ? "डेमो मोड" : "आंशिक मोड — कुछ API बाक़ी हैं";
         }
       })

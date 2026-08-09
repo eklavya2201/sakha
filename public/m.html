@@ -341,22 +341,12 @@
       .line.caller { background: rgba(249, 115, 22, 0.12); margin-left: 20px; }
       .line em { display: block; font-style: normal; font-size: 13px; color: var(--ink-soft); }
 
-      /* The helplines. Nothing external requires these — it is a judgement, and
-         this is the reasoning, because someone will want to delete them.
-
-         An elder cannot write down a number that was only ever spoken aloud, so
-         if a call goes somewhere dark the number has to already be on the glass.
-         It costs one line before the call and one after it.
-
-         But NOT during the call. That screen was deliberately stripped to a
-         single word, and a helpline notice under it both adds clutter and
-         changes what the screen is saying to someone who is simply chatting.
-         Sakha speaks the number himself when it is actually warranted — see
-         CRISIS in src/voice/prompt.js — which is the moment it matters. */
-      footer { flex: none; text-align: center; color: var(--ink-soft); font-size: 14px; padding-top: 10px; line-height: 1.5; }
-      footer a { color: var(--orange-deep); font-weight: 600; text-decoration: none; font-size: 15.5px; }
-      .wrap.in-call footer { display: none; }
-      .mode { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
+      /* The helpline footer used to live here and has been removed on request.
+         Crisis handling is NOT gone with it — it never lived in the UI. Sakha
+         speaks Tele-MANAS 14416 aloud himself when a caller's words warrant it
+         (see CRISIS in src/voice/prompt.js), and the WhatsApp path still sends
+         the numbers as text so they stay on screen. */
+      .mode { display: block; text-align: center; margin-top: 6px; font-size: 12px; color: var(--ink-faint); }
 
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
@@ -407,6 +397,9 @@
           <div class="actions">
             <button class="primary" id="btn-start">माइक चालू कीजिए</button>
             <p class="whisper" id="cta-hint">सखा को सुनने के लिए माइक की इजाज़त चाहिए</p>
+            <!-- Only ever written to when a key is missing, so a demo does not
+                 silently look like the real thing. Blank the rest of the time. -->
+            <p class="mode" id="mode"></p>
             <div class="error" id="intro-error"></div>
           </div>
         </section>

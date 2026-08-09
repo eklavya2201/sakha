@@ -17,7 +17,7 @@
 
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { IN_SAMPLE_RATE, silence, fadeEdges } from "./format.js";
+import { IN_SAMPLE_RATE, silence, fadeIn } from "./format.js";
 import { makeStt } from "./stt.js";
 import { makeTts, ttsConfigured, cacheablePhrases, prewarmPhrases } from "./tts.js";
 import { speakReply, speakDemoReply, brainConfigured, reviewCall, MAX_HISTORY } from "./brain.js";
@@ -84,7 +84,11 @@ const MAX_CALL_MS = Number(process.env.VOICE_MAX_CALL_MS || 15 * 60 * 1000);
 // The real remaining gap is that each sentence is a separate synthesis, so
 // prosody restarts every time. Fixing that properly means sending fewer, longer
 // requests, which trades against how fast the first word arrives.
-const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 220);
+// Now only ever falls between the first sentence and the rest of the reply —
+// two pieces per turn instead of four — so it can be short. bulbul:v3 already
+// ends a clip with its own natural decay, and stacking a fifth of a second on
+// top of that was audible as a hole rather than a breath.
+const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 120);
 
 // Recognised words needed to interrupt Sakha mid-sentence.
 //
@@ -342,11 +346,33 @@ class RelayCall {
     }
 
     try {
+      // ── Why the reply is spoken in TWO pieces, not sentence by sentence ────
+      // Every separate synthesis request restarts the voice's prosody: pitch
+      // resets, the sentence begins from a standing start, and a reply made of
+      // three requests sounds like three announcements rather than one person
+      // talking. That was the biggest remaining cause of "it sounds like a bot".
+      //
+      // But synthesising the WHOLE reply in one request means nothing is spoken
+      // until Claude has finished writing all of it, adding seconds of silence.
+      //
+      // So: speak the first sentence the moment it exists — that is what makes
+      // the reply feel prompt — and hold the rest, then send it as ONE request
+      // when the stream ends. The remainder is a single continuous utterance,
+      // and it is being written while the first sentence is still playing, so
+      // the wait is hidden inside audio the caller is already listening to.
+      let spokeFirst = false;
+      const rest = [];
+
       const onSentence = async (sentence) => {
         if (myTurn !== this.turnSeq) return;
         this.setState("speaking");
         this.sendAgentText(sentence);
-        await this.speak(sentence, controller.signal);
+        if (!spokeFirst) {
+          spokeFirst = true;
+          await this.speak(sentence, controller.signal);
+        } else {
+          rest.push(sentence);
+        }
       };
 
       // Look for scripture that speaks to what they just said. This sits
@@ -380,6 +406,11 @@ class RelayCall {
           })
         : await speakDemoReply({ signal: controller.signal, onSentence });
 
+      // Everything after the first sentence, as one continuous utterance.
+      if (rest.length && myTurn === this.turnSeq && !controller.signal.aborted) {
+        await this.speak(rest.join(" "), controller.signal);
+      }
+
       if (spoken && myTurn === this.turnSeq) this.history.push({ role: "assistant", content: spoken });
     } catch (e) {
       if (e.name !== "AbortError" && !controller.signal.aborted) {
@@ -411,14 +442,16 @@ class RelayCall {
 
   async speakSentence(text, signal, { pause = true } = {}) {
     if (!text || !this.tts || this.closed) return;
+    // Only the FIRST chunk is faded in — see fadeIn(). v3 streams a sentence as
+    // dozens of chunks, and fading each one put a dip in the audio every 73ms.
+    let first = true;
     await this.tts.speak(
       text,
       (pcm) => {
         if (signal?.aborted || this.closed) return;
-        // Ramp the edges to zero before this meets the silence on either side.
-        // A clip that stops mid-waveform against digital silence is a step, and
-        // a step is a click — which on a phone speaker is heard as crackle.
-        send(this.ws, { event: "media_output", media: { payload: fadeEdges(pcm).toString("base64") } });
+        const out = first ? fadeIn(pcm) : pcm;
+        first = false;
+        send(this.ws, { event: "media_output", media: { payload: out.toString("base64") } });
       },
       signal
     );
