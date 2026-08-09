@@ -493,7 +493,13 @@
     })
       .then(function (res) {
         return res.json().then(function (session) {
-          if (!res.ok) throw new Error(session.error || "अभी बात शुरू नहीं हो पा रही।");
+          if (!res.ok) {
+            var err = new Error(session.error || "अभी बात शुरू नहीं हो पा रही।");
+            // TRIAL_SPENT is the product working, not a fault — the page shows
+            // it as a plain message rather than a failure.
+            err.code = session.code || null;
+            throw err;
+          }
           return session;
         });
       })

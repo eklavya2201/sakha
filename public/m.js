@@ -239,6 +239,9 @@
           if (screens.connecting.classList.contains("on")) show("call");
           setState(msg.state);
         }
+        if (msg.event === "minutes") {
+          if (msg.spent) els.stateText.textContent = "आज का समय पूरा हुआ";
+        }
         if (msg.event === "transcript" && msg.final) {
           record(msg.role, msg.text);
           if (session && session.voice === "device" && msg.role === "agent") speakOnDevice(msg.text);
@@ -249,6 +252,9 @@
         active = result.call;
         session = result.session;
         startAnimations(active);
+        if (session.minutes && session.minutes.metered && els.ctaHint) {
+          els.ctaHint.textContent = "आपके पास " + session.minutes.remaining + " मिनट बाकी हैं";
+        }
         if (session.mode !== "live" && els.mode) {
           els.mode.textContent = session.mode === "demo" ? "डेमो मोड" : "आंशिक मोड — कुछ API बाक़ी हैं";
         }
@@ -257,7 +263,12 @@
         console.error(e);
         els.start.disabled = false;
         els.again.disabled = false;
-        if (!screens.call.classList.contains("on")) show("intro");
+        if (!screens.call.classList.contains("on")) {
+          show("intro");
+          // The free trial being over is not an error — it is the product
+          // working. It gets the plain message, not the red one.
+          fail(els.introError, (e && e.message) || "अभी बात शुरू नहीं हो पा रही।");
+        }
       });
   }
 

@@ -25,6 +25,7 @@ import { pickAcknowledgement, allFixedPhrases } from "./fillers.js";
 import { buildIntroduction } from "./prompt.js";
 import { findScripture, renderScripture } from "./scripture.js";
 import { findRules, renderRules } from "./rules.js";
+import { looksLikeCrisis } from "./safety.js";
 import { loadUser, saveCall } from "../memory.js";
 
 export const RELAY_PATH = "/voice/stream";
@@ -93,6 +94,24 @@ const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 120);
 // Speak nothing until the whole reply is written. Smoother, and slower — see
 // the note in handleTurn. Try it with VOICE_WHOLE_REPLY=true and listen.
 const WHOLE_REPLY = process.env.VOICE_WHOLE_REPLY === "true";
+
+// ── The meter ───────────────────────────────────────────────────────────────
+// How long before the end Sakha warns. Enough to finish a thought and say
+// goodbye properly, rather than being cut off mid-sentence.
+const WARN_BEFORE_MS = Number(process.env.VOICE_WARN_BEFORE_MS || 2 * 60 * 1000);
+
+// Said plainly, and NOT "ask your son" — the person on the phone may well be the
+// one paying, and being told to go and ask a relative for pocket money is a
+// miserable thing to hear at seventy.
+// Built from the real lead time rather than hardcoded. A line that says "two
+// minutes" while ten seconds remain is worse than no warning at all.
+function warnLine(msLeft) {
+  const mins = Math.round(msLeft / 60000);
+  if (mins >= 2) return `हमारा आज का समय थोड़ा ही बचा है — करीब ${mins} मिनट।`;
+  return "हमारा आज का समय बस पूरा होने को है।";
+}
+const OUT_OF_TIME_LINE =
+  "आज का हमारा समय यहीं पूरा हुआ। आगे बात जारी रखने के लिए इसी पन्ने पर और समय ले लीजिए — मैं यहीं रहूँगा, जब भी बुलाइए।";
 
 // Recognised words needed to interrupt Sakha mid-sentence.
 //
@@ -177,6 +196,10 @@ class RelayCall {
     // writing, which is exactly the overlap that would break it.
     this.speechChain = Promise.resolve();
     this.startedAt = Date.now();
+    // The meter. crisisSeen disables it entirely — see armMeter().
+    this.crisisSeen = false;
+    this.warnTimer = null;
+    this.budgetTimer = null;
     this.timeout = setTimeout(() => this.stop("call exceeded the maximum duration"), MAX_CALL_MS);
   }
 
@@ -272,6 +295,10 @@ class RelayCall {
     this.sendAgentText(this.ticket.introduction);
     await this.speak(this.ticket.introduction, null);
     this.setState("listening");
+
+    // Started after the greeting, not at connect: the caller's free time should
+    // not be spent on Sakha introducing himself.
+    this.armMeter();
   }
 
   /** Legacy JSON audio path, kept so an older cached page still works. */
@@ -292,6 +319,57 @@ class RelayCall {
   }
 
   // ── Turn taking ───────────────────────────────────────────────────────────
+
+  /**
+   * Arm the free-trial timers.
+   *
+   * Two of them: a spoken warning with enough time left to finish a thought,
+   * and the end itself. The end SPEAKS before it hangs up — a line that simply
+   * goes dead reads as a fault, and this is the moment we are asking someone
+   * for money, which is the worst possible moment to look broken.
+   */
+  armMeter() {
+    const budget = Number(this.ticket.budgetMs);
+    if (!Number.isFinite(budget)) return;
+    // A spent ledger must never mean "no timer, talk forever". The session
+    // endpoint refuses these before a socket is ever opened; this is the second
+    // lock, for the day someone changes that endpoint and forgets this file.
+    if (budget <= 0) {
+      this.log("meter: no time left — ending after the greeting");
+      this.sendAgentText(OUT_OF_TIME_LINE);
+      this.speak(OUT_OF_TIME_LINE, null).finally(() => setTimeout(() => this.stop("no free time left"), 900));
+      return;
+    }
+
+    const warnAt = budget > WARN_BEFORE_MS * 1.5 ? budget - WARN_BEFORE_MS : Math.round(budget * 0.6);
+    this.warnTimer = setTimeout(() => {
+      if (this.closed || this.crisisSeen) return;
+      this.log("meter: warning the caller");
+      const line = warnLine(budget - warnAt);
+      this.sendAgentText(line);
+      this.speak(line, null);
+      send(this.ws, { event: "minutes", remaining: Math.round((budget - warnAt) / 60000) });
+    }, warnAt);
+
+    this.budgetTimer = setTimeout(() => {
+      if (this.closed) return;
+      // THE ONE EXEMPTION. Hanging up on a lonely person because their trial
+      // expired is bad; doing it in the middle of the sentence where they first
+      // admit they do not want to live is a different category of thing. The
+      // call runs on, the cost is eaten, and it is flagged for a human.
+      if (this.crisisSeen) {
+        this.log("⚠️  meter expired but a crisis signal was heard — letting the call run");
+        return;
+      }
+      this.log("meter: free time used up");
+      send(this.ws, { event: "minutes", remaining: 0, spent: true });
+      this.sendAgentText(OUT_OF_TIME_LINE);
+      // Speak it, THEN hang up — stop() would cut the sentence off mid-word.
+      this.speak(OUT_OF_TIME_LINE, null).finally(() => {
+        setTimeout(() => this.stop("free time used up"), 900);
+      });
+    }, budget);
+  }
 
   // Tell the page what Sakha is doing so it can show it. Cheap, and it is the
   // difference between "सोच रहे हैं…" and a screen that looks frozen — which,
@@ -347,6 +425,14 @@ class RelayCall {
 
     send(this.ws, { event: "transcript", role: "caller", text, final: true });
     this.turns.push({ role: "caller", text, at: new Date().toISOString() });
+
+    // Checked on every turn, in a millisecond, with no API call. Once true it
+    // stays true for the rest of the call: someone who said it once must not be
+    // cut off ten minutes later because they sounded cheerful in between.
+    if (!this.crisisSeen && looksLikeCrisis(text)) {
+      this.crisisSeen = true;
+      this.log("⚠️  crisis wording heard — the meter can no longer end this call");
+    }
 
     const myTurn = ++this.turnSeq;
     this.abortTurn();
@@ -513,11 +599,13 @@ class RelayCall {
     if (!this.ticket.phone || !this.turns.length) return;
     const phone = this.ticket.phone;
     const turns = this.turns;
+    // Billed from the greeting onward — see armMeter.
+    const usedMs = Math.max(0, Date.now() - this.startedAt);
 
     (async () => {
       const mem = await loadUser(phone);
       const { new_facts, risk, summary } = await reviewCall({ turns, knownFacts: mem.facts });
-      await saveCall(phone, mem, turns, new_facts);
+      await saveCall(phone, mem, turns, new_facts, usedMs);
       console.log(
         `[sakha:call] (${phone}) saved ${turns.length} turns, ${new_facts.length} new fact(s), risk=${risk}${
           summary ? ` — ${summary}` : ""
@@ -534,6 +622,8 @@ class RelayCall {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.timeout);
+    clearTimeout(this.warnTimer);
+    clearTimeout(this.budgetTimer);
     this.abortTurn();
     try {
       this.stt?.close();

@@ -10,7 +10,7 @@ import { synthesize } from "./tts.js";
 import { converse } from "./brain.js";
 import { loadUser, saveExchange } from "./memory.js";
 import { attachVoiceRelay, warmVoiceCache } from "./voice/relay.js";
-import { createCallSession, voiceStatusLine, voiceMode } from "./voice/session.js";
+import { createCallSession, voiceStatusLine, voiceMode, trialSpent } from "./voice/session.js";
 import { loadScripture, scriptureStatusLine } from "./voice/scripture.js";
 import { panchangStatusLine } from "./voice/panchang.js";
 import { ttsSpeakerWarning } from "./voice/tts.js";
@@ -110,6 +110,14 @@ app.post("/api/voice/session", async (req, res) => {
     return res.status(429).json({ error: "थोड़ी देर रुककर फिर कोशिश कीजिए।" });
   }
   try {
+    // Out of free minutes: refused here, before a socket is ever opened, so the
+    // page can say so calmly instead of connecting a call that dies on hello.
+    if (await trialSpent(req.body?.phone)) {
+      return res.status(402).json({
+        error: "आपका मुफ़्त समय पूरा हो चुका है। आगे बात जारी रखने के लिए और समय ले लीजिए।",
+        code: "TRIAL_SPENT",
+      });
+    }
     // Behind ngrok the real protocol is in x-forwarded-proto, not req.protocol —
     // get this wrong and the page tries ws:// from an https:// origin, which the
     // browser blocks as mixed content with a message that names nothing.

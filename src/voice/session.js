@@ -7,7 +7,7 @@
 // back would hand an anonymous caller an edit box for the persona, the
 // boundaries and the crisis rules.
 
-import { loadUser } from "../memory.js";
+import { loadUser, remainingMs } from "../memory.js";
 import { buildCallPrompt, buildIntroduction } from "./prompt.js";
 import { getPanchang, renderPanchang } from "./panchang.js";
 import { mintRelayTicket, RELAY_PATH } from "./relay.js";
@@ -15,6 +15,11 @@ import { IN_SAMPLE_RATE, OUT_SAMPLE_RATE } from "./format.js";
 import { sttConfigured } from "./stt.js";
 import { ttsConfigured, ttsStatusLine } from "./tts.js";
 import { brainConfigured, brainStatusLine } from "./brain.js";
+
+// A caller who gave no number has no ledger to draw on. One short call rather
+// than none: turning an anonymous tap away would break the one-tap promise the
+// whole page is built around.
+const ANON_CALL_MS = Number(process.env.ANON_CALL_MINUTES || 5) * 60 * 1000;
 
 /**
  * Indian mobile number → the same key WhatsApp uses (91XXXXXXXXXX), so a call
@@ -77,8 +82,17 @@ export async function createCallSession({ phone = null, name = null, origin = ""
   // rather than paying for it again.
   const panchang = getPanchang();
 
+  // ── How long this call may run ────────────────────────────────────────────
+  // A known caller draws on their ledger. Someone who gave no number cannot
+  // have one — there is nobody to bill — so they get a single short call
+  // instead. That is gameable by clearing the field, and deliberately so: the
+  // point of the anonymous path is that an elder can talk to Sakha in one tap
+  // without an account, and hardening it would cost more than it saves.
+  const budgetMs = waId ? remainingMs(mem) : ANON_CALL_MS;
+
   const token = mintRelayTicket({
     phone: waId,
+    budgetMs,
     language: process.env.SARVAM_STT_LANGUAGE || "hi-IN",
     systemPrompt: [buildCallPrompt(caller), renderPanchang(panchang)].filter(Boolean).join("\n\n"),
     introduction: buildIntroduction(caller),
@@ -109,5 +123,21 @@ export async function createCallSession({ phone = null, name = null, origin = ""
       name: caller.name,
       remembers: mem.facts.length,
     },
+    // Shown so the page can say so kindly. The meter itself is enforced on the
+    // server — nothing here is trusted back.
+    minutes: {
+      // Never round a live budget down to "0 minutes" — that reads as "you
+      // have none" to someone who does.
+      remaining: budgetMs > 0 ? Math.max(1, Math.round(budgetMs / 60000)) : 0,
+      metered: Boolean(waId),
+      spent: budgetMs <= 0,
+    },
   };
+}
+
+/** Has this person used up their free talk time? */
+export async function trialSpent(phone) {
+  const waId = normalizePhone(phone);
+  if (!waId) return false; // anonymous callers are capped per call instead
+  return remainingMs(await loadUser(waId)) <= 0;
 }

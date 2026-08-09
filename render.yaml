@@ -87,3 +87,7 @@ services:
         value: "true"
       - key: SARVAM_TTS_PITCH
         value: "0"
+      - key: FREE_TRIAL_MINUTES
+        value: "15"
+      - key: ANON_CALL_MINUTES
+        value: "5"

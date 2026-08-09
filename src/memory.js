@@ -9,12 +9,39 @@ function userFile(waId) {
   return join(DATA_DIR, `${waId.replace(/\D/g, "")}.json`);
 }
 
+// ── The free trial ──────────────────────────────────────────────────────────
+// Talk time is tracked in the same per-person file as everything else, because
+// it is the same person: one file, one write, no second store to fall out of
+// step with the first.
+//
+// Enforced entirely on the server. The browser is told how much is left only so
+// it can say so kindly — nothing about the meter is trusted from the client.
+const FREE_TRIAL_MS = Number(process.env.FREE_TRIAL_MINUTES || 15) * 60 * 1000;
+
 export async function loadUser(waId) {
+  let user;
   try {
-    return JSON.parse(await readFile(userFile(waId), "utf8"));
+    user = JSON.parse(await readFile(userFile(waId), "utf8"));
   } catch {
-    return { facts: [], history: [] };
+    user = { facts: [], history: [] };
   }
+  // Older files predate the meter; a missing ledger means an untouched trial.
+  if (!user.minutes) user.minutes = { usedMs: 0, grantedMs: FREE_TRIAL_MS };
+  return user;
+}
+
+/** Talk time this person still has, in milliseconds. Never negative. */
+export function remainingMs(mem) {
+  const m = mem?.minutes || {};
+  return Math.max(0, (m.grantedMs ?? FREE_TRIAL_MS) - (m.usedMs || 0));
+}
+
+/** Add paid (or gifted) minutes. The payment webhook will call this. */
+export async function grantMinutes(waId, minutes) {
+  const mem = await loadUser(waId);
+  mem.minutes.grantedMs = (mem.minutes.grantedMs || 0) + minutes * 60 * 1000;
+  await persist(waId, mem, []);
+  return remainingMs(mem);
 }
 
 // Claude requires messages to alternate and to start with the user. WhatsApp
@@ -60,10 +87,17 @@ export async function saveExchange(waId, mem, userText, replyText, newFacts) {
  *
  * @param {Array<{role: "caller"|"agent", text: string}>} turns - in spoken order
  */
-export async function saveCall(waId, mem, turns, newFacts) {
+export async function saveCall(waId, mem, turns, newFacts, usedMs = 0) {
   for (const turn of turns) {
     if (!turn?.text) continue;
     mem.history.push({ role: turn.role === "caller" ? "user" : "assistant", content: turn.text });
+  }
+  // Metered here rather than in its own write, so a call cannot be remembered
+  // without being billed or billed without being remembered.
+  if (usedMs > 0) {
+    mem.minutes = mem.minutes || { usedMs: 0, grantedMs: FREE_TRIAL_MS };
+    mem.minutes.usedMs = (mem.minutes.usedMs || 0) + usedMs;
+    mem.minutes.lastCallAt = new Date().toISOString();
   }
   await persist(waId, mem, newFacts);
 }
