@@ -8,19 +8,46 @@ A WhatsApp voice bot for elderly people in India who are lonely or quietly depre
 
 ## ⚡ Current status (read this first)
 
-**Everything is built and wired. Exactly ONE thing is missing: the Anthropic API key.**
+**Everything is built, wired and live. Both ways in work: WhatsApp voice notes, and a real-time call from a phone browser at `/m`.**
 
 | Piece | Status |
 |---|---|
 | Code (webhook → STT → Claude → TTS → voice note) | ✅ done, tested |
 | **Live phone call from a browser (`/m`)** | ✅ built, verified end to end — `npm run voice:check` |
+| Gita + Purana retrieval, searched mid-call | ✅ 2152 passages, ~1ms, committed in `corpus/` |
+| Panchang (today's tithi) + practice rules | ✅ verified against the calendar |
+| Anthropic API key | ✅ in `.env` |
 | Sarvam key (speech-to-text + text-to-speech) | ✅ in `.env`, round-trip verified |
 | Meta app "SAKHA" + WhatsApp test number | ✅ created, outbound tested |
 | Webhook (callback URL + `messages` subscribed + app subscribed to WABA) | ✅ verified — inbound "hi" reached the server |
 | ngrok static tunnel | ✅ `reid-mediatorial-noncreditably.ngrok-free.dev` |
-| **Anthropic API key** | ❌ **the only missing piece** |
+| Render blueprint (`render.yaml`) | ✅ ready to deploy — see the deploy notes below |
+| **Persistent memory when deployed** | ⚠️ **the one real gap** — free instances have no disk |
 
-**To make it fully work:** get a key at console.anthropic.com (needs ~$5 min credits) → open `.env` → set `ANTHROPIC_API_KEY=sk-ant-...` → run `start-sakha.bat` → send a Hindi voice note to the test number. That's it.
+The boot line tells you the truth about what is switched on:
+
+```
+Voice calls [live]: Sarvam saarika → Claude (claude-sonnet-5) → Sarvam bulbul:v3 (aditya, pace 1, pitch 0, 24000Hz)
+panchang: रविवार, कृष्ण पक्ष एकादशी, मृगशिरा नक्षत्र, श्रावण मास
+scripture: 2152 passages (गीता 701, विष्णु पुराण 1451)
+```
+
+`[live]` means all three keys are present. `[partial]` or `[demo]` means one is
+missing and Sakha is faking that part — the page still runs a whole call either
+way, which is how it was built before the APIs were bought.
+
+### ⚠️ Before real elders use the deployed version
+
+**Render's free tier has no persistent disk.** Sakha's memory is
+`data/users/<phone>.json`, so on the free plan every remembered fact is erased
+on each deploy and each wake from sleep. An elder who tells Sakha about her
+grandson on Tuesday meets a stranger on Wednesday — the one failure this product
+cannot absorb, because memory *is* the product.
+
+Fine for a demo. Before real users: move to a paid instance and uncomment the
+`disk:` block in `render.yaml`, or put memory somewhere that outlives the
+container. Free instances also sleep after ~15 minutes and take ~30s to wake, so
+the first caller after a quiet spell waits through that before Sakha says hello.
 
 > ⚠️ `.env` is NOT in this repo (it holds secrets). Get it from Eklavya privately, or rebuild it from `.env.example` + the values in "Meta/WhatsApp reference" below.
 
@@ -56,13 +83,18 @@ someone who sends voice notes on Monday and taps Call on Thursday is met by a
 friend who remembers Monday.
 
 ```
-Elder taps "बात शुरू कीजिए" on their phone
-   → mic → AudioWorklet → 16kHz PCM ──WebSocket──► src/voice/relay.js
-        ├─► Sarvam streaming STT   hears, and says when the turn ended
-        ├─► Claude (sonnet)        streams a reply, SENTENCE BY SENTENCE
-        └─► Sarvam streaming TTS   bulbul "karun", the WhatsApp voice
-   ◄── PCM ──WebSocket── speaker
+Elder taps one button on their phone
+   → mic → AudioWorklet → 16kHz PCM ──binary WS──► src/voice/relay.js
+        ├─► Sarvam streaming STT    hears, and says when the turn ended
+        ├─► scripture.js + rules.js retrieved locally in ~1ms, no API call
+        ├─► Claude (sonnet-5)       streams a reply, sentence by sentence
+        └─► Sarvam streaming TTS    bulbul:v3 "aditya", 24kHz
+   ◄── 24kHz PCM ──binary WS── speaker
 ```
+
+Retrieval sits **between the transcript and Claude**, not as a tool call — it is
+a local lexical search, so it costs no round trip and adds nothing measurable to
+a gap the caller is already sitting through.
 
 **Why Sarvam for both halves, and not Deepgram or ElevenLabs.** Deepgram's Aura
 has no Hindi voice at all, and its STT is weaker at the Hinglish code-mixing
@@ -83,13 +115,23 @@ npm run voice:check    # boots a server, makes a whole call, feeds it real Hindi
 
 ### What is worth knowing before you tune it
 
+Every line here was measured against the live account. Several contradict the
+documentation, and every one of them cost a debugging session — please read
+before "fixing" any of it.
+
 | Thing | Measured, not guessed |
 |---|---|
-| Silence after the caller stops, before Sakha reacts | **~2.4s**. A Hindi acknowledgement ("अच्छा, समझा…") is spoken into that gap on purpose — 2.4s of nothing reads as a dead line to an elder |
-| Sarvam TTS sample rate | 22050 by default. **`speech_sample_rate`** is the only parameter that changes it; `output_audio_sample_rate` and `sample_rate` are silently ignored |
-| Sarvam streaming TTS | Does **not** stream. One `text` message comes back as one audio blob, however long. Responsiveness comes from *us* splitting the reply into sentences — never hand it a whole reply |
-| Barge-in | Waits for a finished transcript, never for the raw speech-start event. On speakerphone Sakha's own voice leaks into the mic, and cutting on that made him interrupt *himself* three words in |
-| Turn detection | Sarvam's own VAD (`vad_signals=true`), not hand-rolled. `SARVAM_STT_HIGH_VAD` ends turns sooner and is wrong here — elders pause mid-sentence to find a word |
+| **Where the lag actually was** | Sarvam confirms a turn **0.75s** after speech stops when tested alone, and **2.4s** inside the running server. ~1.6s was our own event loop base64-encoding and JSON-parsing every audio frame, thirty times a second. Audio now travels as **raw binary** WebSocket frames; only control messages are JSON |
+| `ws.binaryType` | The browser **must** set `"arraybuffer"`. Without it binary arrives as Blobs, every frame is silently dropped, and the call is totally silent with no error anywhere |
+| `high_vad_sensitivity=true` | The obvious lever for that 2.4s, and **wrong**. It cut an 8.5-second sentence to `"राधे राधे।"` — it ends a turn the moment someone draws breath, which is exactly how elders speak |
+| Short lines were never spoken | Sarvam buffers text until it has enough. `"जी।"` returned **0 bytes in 9s, with no error**; the same text with an explicit `{"type":"flush"}` came back in 0.6s. Every acknowledgement was silent AND held the speech queue until the 12s timeout — a 2.4s gap became a 12s dead line |
+| v2 and v3 chunk completely differently | For one sentence v2 returns **1** audio message, v3 returned **65**. Code that resolved on the first message was right for v2 and cut v3 off after ~90ms. There is **no `final` event** on the socket at all, so completion is detected by the audio going quiet (700ms — 400 was enough standalone and too tight under load) |
+| TTS sample rate | **`speech_sample_rate`** is the only parameter that changes it. `output_audio_sample_rate` and `sample_rate` are accepted and silently ignored. Output is 24kHz, verified genuine: the same sentence came back 103104 bytes at 24k vs 93138 at 22.05k |
+| WebSocket vs POST for TTS | Socket delivers first audio in **219ms**; `POST /text-to-speech` takes **2250ms**. Two extra seconds of dead air per sentence is not worth the simpler code |
+| Fading audio chunks | Fade the **first chunk only**. Fading every chunk was correct when v2 sent one per sentence and became a tremolo through every word on v3 — heard as the voice "breaking" |
+| Prosody restarts per request | Each separate synthesis begins from a standing start, so a three-sentence reply sounds like three announcements. The reply is spoken in **two** pieces: the first sentence immediately, then the remainder as one continuous utterance. `VOICE_WHOLE_REPLY=true` makes it one piece — smoother and slower |
+| Barge-in | Waits for a finished transcript, never the raw speech-start event. On speakerphone Sakha's own voice leaks into the mic, and cutting on that made him interrupt *himself* three words in |
+| Acknowledgements | Never in front of a **question** — you answer a question, you do not say "I see" to it. Otherwise matched to sentiment: a cheerful "अच्छा!" after someone says their knees hurt proves nobody was listening |
 
 ## Project structure
 
@@ -110,18 +152,50 @@ src/voice/brain.js   Claude streamed sentence-by-sentence, + the after-call revi
 src/voice/prompt.js  Sakha's persona for a CALL (shorter turns than WhatsApp)
 src/voice/fillers.js Hindi acknowledgements spoken while Claude is still writing
 src/voice/sentences.js  splits streaming text on the danda (।) as well as . ? !
-src/voice/format.js  the one audio format: 16kHz mono PCM, both directions
+src/voice/format.js  audio format: mic 16kHz in, Sakha 24kHz out, + the fade-in
+src/voice/scripture.js  BM25 over the Gita + Vishnu Purana, searched mid-call (~1ms)
+src/voice/panchang.js   today's tithi/nakshatra/vaar, in Hindi
+src/voice/rules.js      curated vrat/food/auspicious-day custom — NOT scripture
 
-public/m.html        the phone page — bright, Hindi, one button
-public/m.js          screens, timer, the topic constellation
+public/m.html        the phone page — bright, Hindi, one button per screen
+public/m.js          screens, timer, captions, the breathing edge
 public/voiceClient.js  mic → PCM → WebSocket → speaker (knows nothing about Sakha)
 
+corpus/index.json    2152 searchable passages — COMMITTED, so the deploy has it
+scripts/build-corpus.js rebuilds the above from data/corpus/raw (gitignored)
 scripts/voice-check.js  end-to-end call preflight (`npm run voice:check`)
 scripts/test-sarvam.js  TTS→ffmpeg→STT round-trip test (no WhatsApp needed)
 docs/API-SETUP-GUIDE.md how the API keys were obtained (for reference/redo)
 start-sakha.bat      one-click: server + ngrok tunnel
 .env                 secrets — NOT committed; ask Eklavya
 ```
+
+## Deploying to Render
+
+`render.yaml` is in the repo root, so Render's Blueprint finds it. One service,
+because the WebSocket relay must share an origin with the page and Render gives
+a service exactly one port.
+
+1. Render → New → Blueprint → pick this repo → branch `main`
+2. It will ask for the five secrets. Set **`SARVAM_API_KEY`** and
+   **`ANTHROPIC_API_KEY`** — those two are the product. The three WhatsApp values
+   are only needed for the voice-note half; `/m` works without them
+3. Deploy, then check it came up:
+
+```bash
+curl https://<your-service>.onrender.com/healthz
+```
+
+Expect `{"ok":true,"voice":"live"}`. Anything other than `live` means a key is
+missing — the service still runs, with that part faked.
+
+4. Point the Meta webhook at `https://<your-service>.onrender.com/webhook`
+   instead of the ngrok domain
+5. Open `https://<your-service>.onrender.com/m` on a phone
+
+`corpus/index.json` (4.5MB) is committed on purpose, so the deploy has the
+scripture without a build step. Rebuild it with `node scripts/build-corpus.js`
+only if you change the sources.
 
 ## Running it (teammate quick start)
 
@@ -139,6 +213,22 @@ Then from a **verified test phone** (currently +91 7208530905), message the test
 - send a voice note → get a voice note back in Sakha's voice
 - send text → get text back
 - watch the "Sakha server" window: every message logs as `[sakha] <phone> (audio|text): <transcript>`
+
+To try the **call** locally, open `http://localhost:3005/m` in a browser, or the
+ngrok URL on a phone — `localhost` will not resolve there.
+
+Test the whole call path without a microphone, or a human:
+
+```sh
+npm run voice:check
+```
+
+It boots its own server on a spare port, mints a session, opens the relay socket,
+waits for Sakha's greeting, then feeds recorded Hindi speech in real time as if
+someone were talking, and waits for the transcript and the reply. Every stage
+reports separately with timings, so a failure names the provider that caused it
+instead of "the call didn't work". It exists because the alternative way to find
+out a call is broken is to hand a phone to an elderly person and watch.
 
 Test the audio pipeline alone (needs only the Sarvam key):
 
