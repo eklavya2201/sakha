@@ -251,6 +251,10 @@
     var self = this;
     return new Promise(function (resolve, reject) {
       var ws = new WebSocket(self.options.signedUrl);
+      // Without this, binary frames arrive as Blobs and the ArrayBuffer check in
+      // handleMessage silently drops every one of them — a completely silent
+      // call with no error anywhere.
+      ws.binaryType = "arraybuffer";
       self.ws = ws;
       var opened = false;
 
@@ -301,6 +305,12 @@
   };
 
   VoiceCall.prototype.handleMessage = function (data) {
+    // Speech arrives as a binary frame; only control messages are JSON.
+    if (data instanceof ArrayBuffer) {
+      this.receivedAudio = true;
+      this.playPcmBuffer(new Int16Array(data));
+      return;
+    }
     if (typeof data !== "string") return;
     var msg;
     try {
@@ -335,17 +345,29 @@
     if (this.options.onEvent) this.options.onEvent(msg);
   };
 
+  // Raw binary, not base64 inside JSON.
+  //
+  // This runs ~16 times a second for the whole call, and the server does the
+  // same in reverse. Measured: Sarvam confirms a turn 0.75s after someone stops
+  // speaking when tested on its own, but 2.4s inside the running server — the
+  // provider was never the slow part, the encoding was. Binary also drops about
+  // a third of the bytes, which matters on an elder's mobile data.
   VoiceCall.prototype.sendChunk = function (pcm) {
     var ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(
-      JSON.stringify({ event: "media_input", stream_id: this.streamId, media: { payload: pcm16ToBase64(pcm) } })
-    );
+    try {
+      ws.send(pcm.buffer);
+    } catch (e) {
+      /* socket closed between the check and the write */
+    }
   };
 
   VoiceCall.prototype.playPcm = function (payload) {
-    var pcm = base64ToPcm16(payload);
-    if (!pcm.length) return;
+    this.playPcmBuffer(base64ToPcm16(payload));
+  };
+
+  VoiceCall.prototype.playPcmBuffer = function (pcm) {
+    if (!pcm || !pcm.length) return;
     var ctx = this.playbackContext;
     if (!ctx) return;
 

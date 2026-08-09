@@ -36,7 +36,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SAMPLE = join(ROOT, "sample-reply.wav");
 
 const IN_RATE = 16000;   // what we feed the recogniser
-const OUT_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 22050); // what Sakha is synthesised at
+const OUT_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 24000); // what Sakha is synthesised at
 const FRAME_BYTES = 2048; // 1024 samples ≈ 64ms, same as the browser sends
 
 let failures = 0;
@@ -130,7 +130,12 @@ async function main() {
       error: null,
     };
     const ws = new WebSocket(session.signedUrl);
-    ws.on("message", (raw) => {
+    ws.on("message", (raw, isBinary) => {
+      // Speech comes back as raw binary now; only control messages are JSON.
+      if (isBinary) {
+        state.audioBytes += raw.length;
+        return;
+      }
       let m;
       try {
         m = JSON.parse(raw.toString());
@@ -186,13 +191,7 @@ async function main() {
     const spokeAt = Date.now();
     for (let i = 0; i < pcm.length; i += FRAME_BYTES) {
       if (ws.readyState !== WebSocket.OPEN) break;
-      ws.send(
-        JSON.stringify({
-          event: "media_input",
-          stream_id: "voice-check",
-          media: { payload: pcm.subarray(i, i + FRAME_BYTES).toString("base64") },
-        })
-      );
+      ws.send(pcm.subarray(i, i + FRAME_BYTES), { binary: true });
       await new Promise((r) => setTimeout(r, 64));
     }
     // The number that decides how the call FEELS: how long an elder sits in
@@ -203,9 +202,7 @@ async function main() {
     // recogniser has nothing to end on if the audio simply stops arriving.
     const quiet = Buffer.alloc(FRAME_BYTES);
     for (let i = 0; i < 30 && ws.readyState === WebSocket.OPEN; i++) {
-      ws.send(
-        JSON.stringify({ event: "media_input", stream_id: "voice-check", media: { payload: quiet.toString("base64") } })
-      );
+      ws.send(quiet, { binary: true });
       await new Promise((r) => setTimeout(r, 64));
     }
 

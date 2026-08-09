@@ -90,6 +90,10 @@ const MAX_CALL_MS = Number(process.env.VOICE_MAX_CALL_MS || 15 * 60 * 1000);
 // top of that was audible as a hole rather than a breath.
 const SENTENCE_PAUSE_MS = Number(process.env.VOICE_SENTENCE_PAUSE_MS || 120);
 
+// Speak nothing until the whole reply is written. Smoother, and slower — see
+// the note in handleTurn. Try it with VOICE_WHOLE_REPLY=true and listen.
+const WHOLE_REPLY = process.env.VOICE_WHOLE_REPLY === "true";
+
 // Recognised words needed to interrupt Sakha mid-sentence.
 //
 // ⚠️ Barge-in here waits for a TRANSCRIPT, never for the raw START_SPEECH event,
@@ -182,12 +186,33 @@ class RelayCall {
 
   // ── Protocol ──────────────────────────────────────────────────────────────
 
+  /**
+   * Microphone audio, as a raw binary frame.
+   *
+   * Audio does NOT travel as JSON any more, and that is a latency fix rather
+   * than tidiness. Every frame used to be base64-encoded by the phone, parsed
+   * as JSON here, and decoded again — about thirty times a second in each
+   * direction, all on one thread. Measured cost: Sarvam confirms a turn 0.75s
+   * after someone stops speaking when tested on its own, and 2.4s inside this
+   * running server. The provider was never the slow part; we were.
+   *
+   * Binary also drops ~33% of the bytes, which matters on an elder's mobile
+   * data. Control messages stay JSON — they are small and rare.
+   */
+  handleBinary(buffer) {
+    if (relayMode() === "echo") {
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send(buffer, { binary: true });
+      return;
+    }
+    this.stt?.write(buffer);
+  }
+
   handleMessage(raw) {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
     } catch (e) {
-      return; // the client only ever sends JSON; anything else is not ours
+      return; // control messages only; audio arrives as binary
     }
     switch (msg.event) {
       case "start":
@@ -249,18 +274,21 @@ class RelayCall {
     this.setState("listening");
   }
 
+  /** Legacy JSON audio path, kept so an older cached page still works. */
   handleAudio(msg) {
     const payload = msg.media?.payload;
     if (typeof payload !== "string") return;
+    this.handleBinary(Buffer.from(payload, "base64"));
+  }
 
-    if (relayMode() === "echo") {
-      // Straight back out. If the caller hears themselves, the transport, the
-      // framing and the playback queue are all proven, and anything still broken
-      // is above this line.
-      send(this.ws, { event: "media_output", media: { payload } });
-      return;
+  /** Send PCM to the phone as a binary frame — see handleBinary. */
+  sendAudio(pcm) {
+    if (this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      this.ws.send(pcm, { binary: true });
+    } catch (e) {
+      /* socket died between the check and the write */
     }
-    this.stt?.write(Buffer.from(payload, "base64"));
   }
 
   // ── Turn taking ───────────────────────────────────────────────────────────
@@ -367,7 +395,13 @@ class RelayCall {
         if (myTurn !== this.turnSeq) return;
         this.setState("speaking");
         this.sendAgentText(sentence);
-        if (!spokeFirst) {
+        // WHOLE_REPLY holds everything until Claude has finished writing, which
+        // is smoother — one continuous utterance, prosody never restarts — and
+        // measurably SLOWER, because nothing is spoken until the last sentence
+        // exists. It is off by default: a real tester called the call laggy
+        // before this was ever considered, and smoothness bought with more
+        // silence is not a trade this product can afford.
+        if (!spokeFirst && !WHOLE_REPLY) {
           spokeFirst = true;
           await this.speak(sentence, controller.signal);
         } else {
@@ -451,12 +485,12 @@ class RelayCall {
         if (signal?.aborted || this.closed) return;
         const out = first ? fadeIn(pcm) : pcm;
         first = false;
-        send(this.ws, { event: "media_output", media: { payload: out.toString("base64") } });
+        this.sendAudio(out);
       },
       signal
     );
     if (pause && SENTENCE_PAUSE_MS > 0 && !signal?.aborted && !this.closed && !this.tts.demo) {
-      send(this.ws, { event: "media_output", media: { payload: silence(SENTENCE_PAUSE_MS).toString("base64") } });
+      this.sendAudio(silence(SENTENCE_PAUSE_MS));
     }
   }
 
@@ -557,7 +591,7 @@ export function attachVoiceRelay(server) {
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       const call = new RelayCall(ws, ticket);
-      ws.on("message", (raw) => call.handleMessage(raw));
+      ws.on("message", (raw, isBinary) => (isBinary ? call.handleBinary(raw) : call.handleMessage(raw)));
       ws.on("close", () => call.stop("socket closed"));
       ws.on("error", (e) => {
         console.error("[sakha:call] socket error:", e.message);

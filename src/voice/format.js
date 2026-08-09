@@ -23,7 +23,10 @@
 // rate. `output_audio_sample_rate` and `sample_rate` are accepted and silently
 // ignored — measured against the live account, don't re-litigate.
 export const IN_SAMPLE_RATE = 16000;
-export const OUT_SAMPLE_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 22050);
+// 24000, verified as real rather than ignored: the same sentence came back
+// 103104 bytes at 24k against 93138 at 22.05k — the same 2.1s of speech carried
+// by more samples, not a longer clip.
+export const OUT_SAMPLE_RATE = Number(process.env.VOICE_OUT_SAMPLE_RATE || 24000);
 
 /** Silent PCM at the OUTPUT rate — this only ever goes to the speaker. Used to
  *  pace speech, so the pause is scheduled by the browser's playback queue
