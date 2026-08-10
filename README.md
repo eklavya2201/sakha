@@ -32,7 +32,7 @@ A WhatsApp voice bot for elderly people in India who are lonely or quietly depre
 | Webhook (callback URL + `messages` subscribed + app subscribed to WABA) | ✅ verified — inbound "hi" reached the server |
 | ngrok static tunnel | ✅ `reid-mediatorial-noncreditably.ngrok-free.dev` |
 | Render blueprint (`render.yaml`) | ✅ ready to deploy — see the deploy notes below |
-| **Persistent memory when deployed** | ⚠️ **the one real gap** — free instances have no disk |
+| **Persistent memory when deployed** | ✅ **fix built**: set `DATABASE_URL` to any Postgres — verified locally; needs a DB provisioned at deploy time |
 
 The boot line tells you the truth about what is switched on:
 
@@ -48,16 +48,20 @@ way, which is how it was built before the APIs were bought.
 
 ### ⚠️ Before real elders use the deployed version
 
-**Render's free tier has no persistent disk.** Sakha's memory is
+**Render's free tier has no persistent disk.** Sakha's memory defaults to
 `data/users/<phone>.json`, so on the free plan every remembered fact is erased
 on each deploy and each wake from sleep. An elder who tells Sakha about her
 grandson on Tuesday meets a stranger on Wednesday — the one failure this product
 cannot absorb, because memory *is* the product.
 
-Fine for a demo. Before real users: move to a paid instance and uncomment the
-`disk:` block in `render.yaml`, or put memory somewhere that outlives the
-container. Free instances also sleep after ~15 minutes and take ~30s to wake, so
-the first caller after a quiet spell waits through that before Sakha says hello.
+**The fix: set `DATABASE_URL` to any Postgres** (Render's free Postgres, Neon,
+Supabase). Memory then lives in one `jsonb` row per person and survives every
+deploy and wake — verified locally against a real Postgres, including the
+wiped-files "redeploy" case. The boot line and `/healthz` say which store is
+live; do not put real elders on a deploy whose `/healthz` says
+`"memory":"files"`. Free instances also sleep after ~15 minutes and take ~30s to
+wake, so the first caller after a quiet spell waits through that before Sakha
+says hello.
 
 > ⚠️ `.env` is NOT in this repo (it holds secrets). Get it from Eklavya privately, or rebuild it from `.env.example` + the values in "Meta/WhatsApp reference" below.
 
@@ -152,7 +156,7 @@ src/stt.js           Sarvam speech-to-text (saarika, auto language)
 src/tts.js           Sarvam text-to-speech (bulbul, slow calm voice)
 src/audio.js         ffmpeg ogg↔wav conversions (ffmpeg-static, no install needed)
 src/brain.js         Claude persona + memory + safety classification
-src/memory.js        per-user JSON store (facts + history) — shared by WhatsApp and calls
+src/memory.js        per-user memory (facts + history + minute ledger) — files, or Postgres when DATABASE_URL is set
 
 src/voice/relay.js   ONE LIVE CALL: turn lifecycle, barge-in, speech queue, teardown
 src/voice/session.js mints the single-use ticket, loads who is calling
@@ -187,17 +191,20 @@ because the WebSocket relay must share an origin with the page and Render gives
 a service exactly one port.
 
 1. Render → New → Blueprint → pick this repo → branch `main`
-2. It will ask for the five secrets. Set **`SARVAM_API_KEY`** and
-   **`ANTHROPIC_API_KEY`** — those two are the product. The three WhatsApp values
-   are only needed for the voice-note half; `/m` works without them
+2. It will ask for the secrets. Set **`SARVAM_API_KEY`** and
+   **`ANTHROPIC_API_KEY`** — those two are the product. Set **`DATABASE_URL`**
+   to a Postgres connection string so memory survives redeploys (see the warning
+   above). The three WhatsApp values are only needed for the voice-note half;
+   `/m` works without them
 3. Deploy, then check it came up:
 
 ```bash
 curl https://<your-service>.onrender.com/healthz
 ```
 
-Expect `{"ok":true,"voice":"live"}`. Anything other than `live` means a key is
-missing — the service still runs, with that part faked.
+Expect `{"ok":true,"voice":"live","memory":"postgres"}`. A `voice` other than
+`live` means a key is missing — the service still runs, with that part faked.
+A `memory` of `files` means remembered facts die on the next deploy.
 
 4. Point the Meta webhook at `https://<your-service>.onrender.com/webhook`
    instead of the ngrok domain

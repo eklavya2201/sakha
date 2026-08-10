@@ -5,8 +5,53 @@ import { fileURLToPath } from "node:url";
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "users");
 const HISTORY_LIMIT = 24; // ~12 exchanges kept in context
 
+// Files and database rows are keyed by the same normalized id, so switching
+// stores never splits one person into two.
+function normalizeId(waId) {
+  return waId.replace(/\D/g, "");
+}
+
 function userFile(waId) {
-  return join(DATA_DIR, `${waId.replace(/\D/g, "")}.json`);
+  return join(DATA_DIR, `${normalizeId(waId)}.json`);
+}
+
+// ── Where memory lives ──────────────────────────────────────────────────────
+// Local files by default. Set DATABASE_URL and the same JSON moves into one
+// Postgres row per person instead — because on hosts without a persistent disk
+// (Render's free tier) the files are erased on every deploy and every wake from
+// sleep, and an elder who told Sakha about her grandson on Tuesday meets a
+// stranger on Wednesday. Nothing outside this module knows which store is in use.
+//
+// If the database misbehaves mid-call, memory falls back to the local file and
+// says so loudly: a degraded memory that lasts until the next restart beats a
+// call that crashes while someone is talking.
+const DB_URL = process.env.DATABASE_URL || "";
+
+let poolPromise = null;
+function db() {
+  if (!poolPromise) {
+    poolPromise = import("pg").then(async ({ default: pg }) => {
+      const pool = new pg.Pool({
+        connectionString: DB_URL,
+        // Hosted Postgres (Render, Neon, Supabase) requires TLS; local does not.
+        ssl: /localhost|127\.0\.0\.1/.test(DB_URL) ? false : { rejectUnauthorized: false },
+      });
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS sakha_users (
+           wa_id      text PRIMARY KEY,
+           mem        jsonb NOT NULL,
+           updated_at timestamptz NOT NULL DEFAULT now()
+         )`
+      );
+      return pool;
+    });
+  }
+  return poolPromise;
+}
+
+/** "postgres" or "files" — for the boot line and /healthz, nothing else. */
+export function memoryStore() {
+  return DB_URL ? "postgres" : "files";
 }
 
 // ── The free trial ──────────────────────────────────────────────────────────
@@ -18,13 +63,26 @@ function userFile(waId) {
 // it can say so kindly — nothing about the meter is trusted from the client.
 const FREE_TRIAL_MS = Number(process.env.FREE_TRIAL_MINUTES || 15) * 60 * 1000;
 
-export async function loadUser(waId) {
-  let user;
+async function readUserFile(waId) {
   try {
-    user = JSON.parse(await readFile(userFile(waId), "utf8"));
+    return JSON.parse(await readFile(userFile(waId), "utf8"));
   } catch {
-    user = { facts: [], history: [] };
+    return null;
   }
+}
+
+export async function loadUser(waId) {
+  let user = null;
+  if (DB_URL) {
+    try {
+      const { rows } = await (await db()).query("SELECT mem FROM sakha_users WHERE wa_id = $1", [normalizeId(waId)]);
+      user = rows[0]?.mem || null;
+    } catch (e) {
+      console.warn(`⚠️  memory: postgres read failed (${e.message}) — using the local file`);
+    }
+  }
+  if (!user) user = await readUserFile(waId);
+  if (!user) user = { facts: [], history: [] };
   // Older files predate the meter; a missing ledger means an untouched trial.
   if (!user.minutes) user.minutes = { usedMs: 0, grantedMs: FREE_TRIAL_MS };
   return user;
@@ -68,6 +126,18 @@ async function persist(waId, mem, newFacts) {
   mem.history = normalizeHistory(mem.history);
   for (const fact of newFacts || []) {
     if (!mem.facts.includes(fact)) mem.facts.push(fact);
+  }
+  if (DB_URL) {
+    try {
+      await (await db()).query(
+        `INSERT INTO sakha_users (wa_id, mem, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (wa_id) DO UPDATE SET mem = EXCLUDED.mem, updated_at = now()`,
+        [normalizeId(waId), mem] // pg serialises the object into the jsonb column
+      );
+      return;
+    } catch (e) {
+      console.warn(`⚠️  memory: postgres write failed (${e.message}) — falling back to the local file`);
+    }
   }
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(userFile(waId), JSON.stringify(mem, null, 2));

@@ -13,8 +13,12 @@
 # every remembered fact is erased on each deploy, each restart, and each wake
 # from sleep. An elder who told Sakha about her grandson on Tuesday meets a
 # stranger on Wednesday, which is the one failure this product cannot afford.
-# Free is fine for a demo. Before real users, move to a paid instance and
-# uncomment the disk below, or put memory somewhere that outlives the container.
+# Free is fine for a demo. Before real users, do ONE of:
+#   1. Set DATABASE_URL below to any Postgres (Render's free Postgres, Neon,
+#      Supabase). Memory then lives in one jsonb row per person and survives
+#      every deploy and wake. The boot line and /healthz confirm which store is
+#      live. This is the free fix.
+#   2. Move to a paid instance and uncomment the disk block below.
 #
 # Free instances also sleep after ~15 minutes idle and take ~30s to wake. The
 # first caller after a sleep waits through that before Sakha says hello.
@@ -40,6 +44,12 @@ services:
       # Do NOT set PORT. Render injects it, and src/server.js already reads it.
       - key: NODE_VERSION
         value: "22"
+
+      # ── Memory that outlives the container (OPEN-ISSUES #1) ──
+      # Any Postgres connection string. Unset = local files, which a diskless
+      # host erases on every deploy — fine for a demo, fatal for a real elder.
+      - key: DATABASE_URL
+        sync: false
 
       # ── Sarvam: the hearing AND the speaking, on WhatsApp and on calls ──
       # The one key this product cannot run without. Set it in the dashboard.

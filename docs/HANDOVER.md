@@ -85,7 +85,7 @@ waiting through.
 | `src/voice/scripture.js` | BM25 over `corpus/index.json` |
 | `src/voice/panchang.js` | today's tithi/nakshatra/vaar, in Hindi |
 | `src/voice/rules.js` | curated vrat/food/auspicious-day custom — **not** scripture |
-| `src/memory.js` | per-person JSON: facts, history, **and the minute ledger** |
+| `src/memory.js` | per-person memory: facts, history, **and the minute ledger** — files, or Postgres when `DATABASE_URL` is set (the OPEN-ISSUES #1 fix) |
 | `public/m.*` | the phone page: intro → connecting → call → done |
 
 ## Decisions that look odd and are not

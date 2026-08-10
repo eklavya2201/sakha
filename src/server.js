@@ -8,7 +8,7 @@ import { oggToWav, wavToOggOpus } from "./audio.js";
 import { transcribe } from "./stt.js";
 import { synthesize } from "./tts.js";
 import { converse } from "./brain.js";
-import { loadUser, saveExchange } from "./memory.js";
+import { loadUser, saveExchange, memoryStore } from "./memory.js";
 import { attachVoiceRelay, warmVoiceCache } from "./voice/relay.js";
 import { createCallSession, voiceStatusLine, voiceMode, trialSpent } from "./voice/session.js";
 import { loadScripture, scriptureStatusLine } from "./voice/scripture.js";
@@ -147,7 +147,7 @@ app.get("/", (_req, res) => res.redirect("/m"));
 
 // For the host's health check. Deliberately not "/" — that is a redirect, and a
 // checker that does not follow redirects would read it as the service being down.
-app.get("/healthz", (_req, res) => res.json({ ok: true, voice: voiceMode() }));
+app.get("/healthz", (_req, res) => res.json({ ok: true, voice: voiceMode(), memory: memoryStore() }));
 
 const port = process.env.PORT || 3000;
 
@@ -166,6 +166,10 @@ server.listen(port, () => {
     .then(() => console.log(scriptureStatusLine()))
     .catch((e) => console.warn(`⚠️  Could not load scripture: ${e.message}`));
   console.log(panchangStatusLine());
+  // Files on a diskless host mean every remembered fact dies with the container.
+  // Say which store is live so a bad deploy is caught at boot, not by an elder.
+  if (memoryStore() === "postgres") console.log("memory: postgres (survives redeploys)");
+  else console.log("memory: local files — on a host with no disk these are ERASED on every deploy/wake");
   // A mismatched model/voice pair 400s at synthesis time, which presents as a
   // completely silent call rather than as an error. Say it loudly at boot.
   const speakerWarning = ttsSpeakerWarning();

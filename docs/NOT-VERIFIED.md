@@ -24,6 +24,7 @@ So the rest of the page has a baseline. These are genuinely measured:
 | The free trial meters, blocks and restores | fresh 200 → spent 402 → granted 200 |
 | Panchang matches the real calendar | weekday 40/40; Amavasya gaps 29–30 days |
 | The page fits a 375×812 phone | no page scroll, buttons above the fold |
+| Memory survives a "redeploy" with `DATABASE_URL` set | real local Postgres 16: write facts + ledger, wipe the files, fresh process reads them back; unreachable-DB fallback warns and uses files; `voice:check` passes with the DB live |
 
 Everything below has **no** row like that.
 
@@ -99,6 +100,14 @@ Unknown until it runs: whether the Singapore region behaves, whether 4.5MB of
 committed corpus slows the build, whether 0.1 CPU can hold two WebSockets and a
 Claude stream at once, and whether the health check passes on a cold start while
 the corpus is still indexing.
+
+Also unknown: **a hosted Postgres.** The memory store was verified against a
+local Postgres 16 in Docker, which does not use TLS. The `ssl` branch that a
+Render/Neon/Supabase connection string takes is reasoned, not tested. After the
+first deploy with `DATABASE_URL`, check `/healthz` says `"memory":"postgres"` —
+if it does but facts still vanish, look for the loud
+`memory: postgres … failed` warnings in the logs; the fallback may be quietly
+writing to the doomed local files.
 
 ## 9. Whether an elder can use it at all
 

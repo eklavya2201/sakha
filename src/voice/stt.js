@@ -58,6 +58,11 @@ class SarvamStt {
     this.onError = onError || (() => {});
     this.ws = null;
     this.closed = false;
+    // OPEN-ISSUES #2: the 2.4s turn latency has ~1.6s unexplained, and the
+    // stated next step is to measure it here, on real traffic, before tuning
+    // anything. These two timestamps exist only to print that number.
+    this.lastFrameAt = 0;
+    this.speechEndedAt = 0;
   }
 
   start() {
@@ -103,12 +108,22 @@ class SarvamStt {
       // END_SPEECH is deliberately NOT the turn. It means the audio went quiet;
       // the words arrive ~300ms later in a `data` message, and replying to an
       // empty turn would have Sakha talk over the transcript of it.
+      if (msg.data?.signal_type === "END_SPEECH") this.speechEndedAt = Date.now();
       return;
     }
 
     if (msg.type === "data") {
       const text = msg.data?.transcript?.trim();
-      if (text) this.onTurn(text, msg.data?.language_code || LANGUAGE);
+      if (text) {
+        // Mic frames flow continuously, so "after last frame" measures our own
+        // send path, while "after END_SPEECH" is Sarvam's share. Together they
+        // say whose the missing ~1.6s is.
+        const now = Date.now();
+        const sinceEnd = this.speechEndedAt ? now - this.speechEndedAt : null;
+        const sinceFrame = this.lastFrameAt ? now - this.lastFrameAt : null;
+        console.log(`[stt] turn latency: transcript +${sinceEnd ?? "?"}ms after END_SPEECH, +${sinceFrame ?? "?"}ms after last audio frame`);
+        this.onTurn(text, msg.data?.language_code || LANGUAGE);
+      }
       return;
     }
 
@@ -121,6 +136,7 @@ class SarvamStt {
   write(pcm) {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    this.lastFrameAt = Date.now();
     try {
       ws.send(
         JSON.stringify({

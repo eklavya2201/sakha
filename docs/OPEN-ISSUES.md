@@ -6,7 +6,7 @@ every one was either measured or is a known gap.
 
 ---
 
-## 1. Memory is erased on every restart when deployed free — **blocker**
+## 1. Memory is erased on every restart when deployed free — **fix built, needs a database provisioned**
 
 **Severity: this kills the product, not just a feature.**
 
@@ -17,12 +17,25 @@ grandson on Tuesday meets a stranger on Wednesday.
 Memory *is* the product. Everything else — the voice, the scripture, the
 panchang — is replaceable; being remembered is not.
 
-- **Where:** `render.yaml` (the commented `disk:` block), `src/memory.js`
-- **Reproduce:** deploy free, have a call that learns a fact, redeploy, call again
-- **Fix:** paid instance + uncomment the disk, **or** move the ledger and facts
-  to something that outlives the container (Postgres/Redis). The write surface is
-  tiny and already funnelled through `persist()` in `src/memory.js` — one module
-- **Do not ship to real elders before this is done**
+**The fix now exists:** set `DATABASE_URL` to any Postgres and `src/memory.js`
+keeps each person's memory in one `jsonb` row instead of a file. Same shape,
+same normalized phone key, nothing outside the module knows. If the database is
+unreachable mid-call it warns loudly and falls back to the local file rather
+than crashing a call in progress. The boot line and `/healthz` report which
+store is live (`"memory":"postgres"`).
+
+Verified against a real local Postgres 16 (2026-08-10): facts, history and the
+minute ledger survive a wiped-files fresh-process "redeploy"; `grantMinutes`
+credits correctly; unreachable-DB fallback works; `npm run voice:check` passes
+end to end with `DATABASE_URL` set.
+
+- **Where:** `src/memory.js`, `render.yaml` (`DATABASE_URL` env var)
+- **Still to do (human):** provision a Postgres (Render free Postgres / Neon /
+  Supabase), set `DATABASE_URL` in the Render dashboard, deploy, then confirm
+  `/healthz` says `"memory":"postgres"` and a fact survives a redeploy
+- **Not yet verified:** a *hosted* Postgres — the TLS branch of the connection
+  code is reasoned, not tested (see [NOT-VERIFIED.md](NOT-VERIFIED.md))
+- **Do not ship to real elders before the deployed check is done**
 
 ---
 
@@ -45,9 +58,12 @@ reaches Sarvam later than it would from a real phone. If that is right, a real
 phone is already faster than 2.4s and this issue is smaller than it looks.
 
 - **Where:** `src/voice/stt.js`, `scripts/voice-check.js`
-- **Next step:** measure on the **deployed** instance from a **real phone** —
-  log the delta between the last inbound audio frame and the `data` transcript
-  inside `SarvamStt`. Do not tune anything until that number exists
+- **The instrumentation now exists:** every live turn logs
+  `[stt] turn latency: transcript +Xms after END_SPEECH, +Yms after last audio frame`.
+  Mic frames flow continuously, so "after last frame" isolates our send path and
+  "after END_SPEECH" is Sarvam's share
+- **Next step:** read that line on the **deployed** instance from a **real
+  phone**. Do not tune anything until that number exists
 - **Already ruled out:** `high_vad_sensitivity=true` cut an 8.5s sentence to
   `"राधे राधे।"`. It is not a latency knob, it is a truncation knob
 
