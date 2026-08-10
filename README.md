@@ -6,6 +6,16 @@ A WhatsApp voice bot for elderly people in India who are lonely or quietly depre
 
 ---
 
+## 📋 Start here if you are picking this up
+
+| Document | What it answers |
+|---|---|
+| [docs/HANDOVER.md](docs/HANDOVER.md) | How it works, the code map, and which odd-looking decisions are load-bearing |
+| [docs/OPEN-ISSUES.md](docs/OPEN-ISSUES.md) | What is broken or risky, with repros — read #1 before deploying for real users |
+| [docs/NOT-VERIFIED.md](docs/NOT-VERIFIED.md) | What nobody has ever checked, which is the more dangerous list |
+| [docs/TESTING.md](docs/TESTING.md) | The Hindi test card, and how to read a failing check |
+| [docs/ROADMAP-PAID.md](docs/ROADMAP-PAID.md) | Payment, retention, and what NOT to build next |
+
 ## ⚡ Current status (read this first)
 
 **Everything is built, wired and live. Both ways in work: WhatsApp voice notes, and a real-time call from a phone browser at `/m`.**

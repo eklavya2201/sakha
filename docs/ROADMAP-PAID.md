@@ -1,0 +1,116 @@
+# Roadmap — from free trial to a paid product
+
+Where this is going, in the order it should be built. Steps 1–3 are **done**;
+the rest is not started.
+
+---
+
+## Done: the trial mechanic (steps 1–3)
+
+- **Ledger** — talk time in the same per-person file as the memory, because it is
+  the same person. Billed inside `saveCall()`, so a call cannot be remembered
+  without being billed or billed without being remembered
+- **Enforcement** — server-side only. A spent ledger is refused at
+  `/api/voice/session` with `402 TRIAL_SPENT` before a socket is ever opened
+- **A spoken warning** — Sakha says the time is nearly up, and says goodbye
+  before the line closes, rather than the call simply going dead
+
+Config: `FREE_TRIAL_MINUTES` (15, per number, all-time), `ANON_CALL_MINUTES` (5,
+per call, no ledger), `VOICE_WARN_BEFORE_MS`.
+
+**The exemption:** a crisis signal disables the meter for that call. Hanging up
+on a lonely person because their trial expired is bad; doing it in the middle of
+the sentence where they first admit they do not want to live is a different
+category of thing. Do not make this configurable.
+
+**Run the trial before building payment.** The mechanic works without it, and
+15 minutes is a guess. Find out whether anyone reaches the limit at all, and how
+they react when they do, before wiring up money.
+
+---
+
+## Step 4 — payment
+
+**Razorpay, not Stripe.** UPI is non-negotiable in India and Stripe is weak
+there.
+
+The whole integration is one function that already exists:
+
+```js
+import { grantMinutes } from "./src/memory.js";
+await grantMinutes(waId, 60);   // credits an hour, returns the new balance
+```
+
+So the work is: a payment link, a webhook that verifies the signature and calls
+`grantMinutes`, and a page to land on afterwards. Nothing in the call path
+changes.
+
+### The commercial detail that decides the design
+
+**The elder is not the payer.** Their son or daughter is — usually the one who
+sent the link in the first place. So:
+
+- **Elder's side:** nothing. No card entry, no plan comparison, no pricing page.
+  A 74-year-old should never be asked to fumble through checkout mid-conversation
+- **Family's side:** a payment link over SMS or WhatsApp, opened on their own
+  phone, paid with UPI in fifteen seconds
+
+This also means the free trial's real job is **hooking the child**, not the
+elder. The elder gets attached; the child pays. Design the conversion flow at
+whoever receives "आपकी माँ ने सखा से बात की" — not at the caller.
+
+### Open questions worth answering with data, not opinion
+
+- Per-minute top-ups or a monthly family plan? A plan is better revenue and
+  worse for a first purchase
+- Does the trial reset monthly? Currently it is all-time
+- What happens to memory if someone stops paying? Deleting it is the cruellest
+  possible churn mechanic. Keep it
+
+---
+
+## Step 5 — Add to Home Screen (PWA)
+
+A web manifest and an icon. Small, and it fixes the biggest retention problem
+this product has: **an elder who cannot find the link again does not call again.**
+An icon on the home screen turns a URL into an app they can find.
+
+Do this before any marketing. It is a day of work and it changes the shape of
+the retention curve.
+
+---
+
+## Then: reaching out
+
+The one real thing lost by dropping WhatsApp is that **a browser page cannot
+start a conversation.** For a companionship product that matters more than it
+sounds — loneliness is not something people reliably self-serve for. The elder
+who most needs the call is the least likely to remember to make it.
+
+Options, cheapest first:
+
+1. **SMS check-in** — "सखा आपको याद कर रहे हैं" with the link. Far simpler and
+   cheaper than WhatsApp Business, no Meta involvement, no template approval
+2. **A PWA notification** — free, but only if they installed it (see step 5)
+3. **WhatsApp** — the code is still here and still works. Best reach, worst
+   operational burden: 24h token expiry, business verification, template rules,
+   per-conversation pricing
+
+**Recommendation:** keep the WhatsApp code in the repo, stop maintaining it, and
+try SMS check-ins first. If browser retention holds without check-ins at all,
+you never need any of it.
+
+---
+
+## What NOT to build next
+
+Written down because each of these is tempting and each is a distraction:
+
+- **More scripture.** 2152 passages already return nothing on most turns, which
+  is correct. More corpus does not make Sakha wiser
+- **More voices or languages.** One voice that sounds right in Hindi beats five
+  that are nearly right. Regional languages matter, but only after Hindi retains
+- **A dashboard.** Nobody is asking for one
+- **Anything at all** before [NOT-VERIFIED.md](NOT-VERIFIED.md) #9 is done: sit
+  with one real elderly person and watch them use it. That session will
+  reorder this entire page
