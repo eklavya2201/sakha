@@ -27,22 +27,41 @@ function userFile(waId) {
 // call that crashes while someone is talking.
 const DB_URL = process.env.DATABASE_URL || "";
 
+const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS sakha_users (
+  wa_id      text PRIMARY KEY,
+  mem        jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+)`;
+
 let poolPromise = null;
 function db() {
   if (!poolPromise) {
     poolPromise = import("pg").then(async ({ default: pg }) => {
-      const pool = new pg.Pool({
-        connectionString: DB_URL,
-        // Hosted Postgres (Render, Neon, Supabase) requires TLS; local does not.
-        ssl: /localhost|127\.0\.0\.1/.test(DB_URL) ? false : { rejectUnauthorized: false },
-      });
-      await pool.query(
-        `CREATE TABLE IF NOT EXISTS sakha_users (
-           wa_id      text PRIMARY KEY,
-           mem        jsonb NOT NULL,
-           updated_at timestamptz NOT NULL DEFAULT now()
-         )`
-      );
+      // Whether the wire wants TLS depends on where the database lives — Neon
+      // and Supabase and Render's external URLs require it, a local docker or
+      // Render's internal hostname may refuse it. Guess from the URL, but if
+      // the server disagrees with the guess, flip once and carry on: which kind
+      // of socket this is must never be the reason an elder was forgotten.
+      // DATABASE_SSL=require|disable overrides the guess entirely.
+      const guess =
+        process.env.DATABASE_SSL === "disable"
+          ? false
+          : process.env.DATABASE_SSL === "require"
+            ? { rejectUnauthorized: false }
+            : /localhost|127\.0\.0\.1/.test(DB_URL)
+              ? false
+              : { rejectUnauthorized: false };
+      let pool = new pg.Pool({ connectionString: DB_URL, ssl: guess });
+      try {
+        await pool.query(CREATE_TABLE);
+      } catch (e) {
+        if (!/ssl/i.test(e.message)) throw e;
+        pool.end().catch(() => {});
+        const flipped = guess ? false : { rejectUnauthorized: false };
+        console.warn(`⚠️  memory: postgres disagreed about TLS (${e.message}) — reconnecting the other way`);
+        pool = new pg.Pool({ connectionString: DB_URL, ssl: flipped });
+        await pool.query(CREATE_TABLE);
+      }
       return pool;
     });
   }
