@@ -174,6 +174,8 @@ src/voice/rules.js      curated vrat/food/auspicious-day custom — NOT scriptur
 public/m.html        the phone page — bright, Hindi, one button per screen
 public/m.js          screens, timer, captions, the breathing edge
 public/voiceClient.js  mic → PCM → WebSocket → speaker (knows nothing about Sakha)
+public/manifest.webmanifest  Add-to-Home-Screen: सखा as an installable app, straight to /m
+scripts/build-icons.js  regenerates public/icons/ (the bansuri) — no design tool needed
 
 corpus/index.json    2152 searchable passages — COMMITTED, so the deploy has it
 scripts/build-corpus.js rebuilds the above from data/corpus/raw (gitignored)

@@ -50,6 +50,9 @@ No iPhone. No Android. Not once. Specifically unexercised:
 - Whether the breathing edge animates smoothly or chugs
 - Whether the Google Fonts request succeeds (it is blocked in the dev browser,
   so the Devanagari serif headline has never actually been seen)
+- The Add-to-Home-Screen flow: whether the install prompt appears, whether the
+  bansuri icon survives Android's maskable crop, whether standalone mode keeps
+  the mic permission it was granted in the browser
 
 ## 3. Any real elderly voice
 

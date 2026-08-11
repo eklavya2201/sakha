@@ -1,0 +1,19 @@
+{
+  "name": "सखा — मन की बात",
+  "short_name": "सखा",
+  "description": "सखा से फ़ोन पर बात कीजिए — एक साथी, जो सुनता है और याद रखता है।",
+  "id": "/m",
+  "start_url": "/m",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "hi",
+  "background_color": "#fff8f1",
+  "theme_color": "#fff8f1",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
