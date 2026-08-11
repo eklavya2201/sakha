@@ -29,12 +29,16 @@ minute ledger survive a wiped-files fresh-process "redeploy"; `grantMinutes`
 credits correctly; unreachable-DB fallback works; `npm run voice:check` passes
 end to end with `DATABASE_URL` set.
 
-- **Where:** `src/memory.js`, `render.yaml` (`DATABASE_URL` env var)
-- **Still to do (human):** provision a Postgres (Render free Postgres / Neon /
-  Supabase), set `DATABASE_URL` in the Render dashboard, deploy, then confirm
-  `/healthz` says `"memory":"postgres"` and a fact survives a redeploy
-- **Not yet verified:** a *hosted* Postgres — the TLS branch of the connection
-  code is reasoned, not tested (see [NOT-VERIFIED.md](NOT-VERIFIED.md))
+- **Where:** `src/memory.js`, `render.yaml` (the `sakha-memory` database +
+  `DATABASE_URL` from it)
+- **Still to do (human):** deploy the Blueprint (it provisions the database
+  itself), then confirm `/healthz` says `"memory":"postgres"` and a fact
+  survives a redeploy. ⚠️ Render deletes **free** databases after 30 days —
+  upgrade it or swap in a Neon/Supabase URL before real users
+- **TLS:** whichever the server wants. The code guesses from the URL, flips
+  once if the server disagrees, and `DATABASE_SSL=require|disable` overrides
+  the guess. The flip path is tested; a real hosted Postgres still is not
+  (see [NOT-VERIFIED.md](NOT-VERIFIED.md))
 - **Do not ship to real elders before the deployed check is done**
 
 ---

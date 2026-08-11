@@ -194,10 +194,12 @@ a service exactly one port.
 
 1. Render → New → Blueprint → pick this repo → branch `main`
 2. It will ask for the secrets. Set **`SARVAM_API_KEY`** and
-   **`ANTHROPIC_API_KEY`** — those two are the product. Set **`DATABASE_URL`**
-   to a Postgres connection string so memory survives redeploys (see the warning
-   above). The three WhatsApp values are only needed for the voice-note half;
-   `/m` works without them
+   **`ANTHROPIC_API_KEY`** — those two are the product. The three WhatsApp
+   values are only needed for the voice-note half; `/m` works without them.
+   **`DATABASE_URL` fills itself** — the Blueprint provisions its own free
+   Postgres (`sakha-memory`) so memory survives redeploys. ⚠️ Render deletes
+   free databases after 30 days; fine for testing, upgrade it (or swap in a
+   Neon/Supabase URL) before real users
 3. Deploy, then check it came up:
 
 ```bash
