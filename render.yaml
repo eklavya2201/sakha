@@ -23,6 +23,18 @@
 # Free instances also sleep after ~15 minutes idle and take ~30s to wake. The
 # first caller after a sleep waits through that before Sakha says hello.
 
+# The database is provisioned by this same Blueprint, so memory survives
+# redeploys with no wiring by hand — DATABASE_URL below is filled in from it.
+# ⚠️ Render's FREE Postgres is deleted 30 days after creation, data included.
+# Fine for the phone-testing phase; before real elders either upgrade this
+# database to a paid plan or point DATABASE_URL at a Neon/Supabase free
+# instance instead (those do not expire).
+databases:
+  - name: sakha-memory
+    plan: free
+    region: singapore # same region as the service — memory reads sit on the call path
+    postgresMajorVersion: "16"
+
 services:
   - type: web
     name: krishna-sakha
@@ -46,10 +58,14 @@ services:
         value: "22"
 
       # ── Memory that outlives the container (OPEN-ISSUES #1) ──
-      # Any Postgres connection string. Unset = local files, which a diskless
-      # host erases on every deploy — fine for a demo, fatal for a real elder.
+      # Filled from the Blueprint's own database above. To use a different
+      # Postgres (Neon, Supabase), replace fromDatabase with the URL in the
+      # dashboard. Unset = local files, which a diskless host erases on every
+      # deploy — fine for a demo, fatal for a real elder.
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: sakha-memory
+          property: connectionString
 
       # ── Sarvam: the hearing AND the speaking, on WhatsApp and on calls ──
       # The one key this product cannot run without. Set it in the dashboard.
